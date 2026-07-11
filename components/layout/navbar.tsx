@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CategoryNavigation } from "./category-navigation";
 import {
   useRef,
   useState,
@@ -277,6 +278,8 @@ export function Navbar() {
       <div className="border-t border-[#E5E7EB] px-4 pb-3 pt-3 sm:px-6 md:hidden">
         <SearchForm inputId="mobile-navbar-search" />
       </div>
+
+      <CategoryNavigation />
 
       <dialog
         ref={dialogRef}
