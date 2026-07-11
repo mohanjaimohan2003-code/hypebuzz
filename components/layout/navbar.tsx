@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CategoryNavigation } from "./category-navigation";
@@ -11,10 +12,8 @@ import {
 } from "react";
 
 const navigationItems = [
-  { label: "Home", href: "/" },
-  { label: "Categories", href: "/categories" },
-  { label: "Compare", href: "/compare" },
   { label: "Wishlist", href: "/wishlist" },
+  { label: "Login", href: "/login" },
 ] as const;
 
 const focusRing =
@@ -191,7 +190,7 @@ export function Navbar() {
   const wishlistIsActive = isActivePath(pathname, "/wishlist");
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-[#E5E7EB] bg-white font-sans shadow-[0_1px_3px_rgba(17,24,39,0.08)]">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black font-sans shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
       <a
         className="sr-only rounded-[10px] bg-white px-4 py-3 font-semibold text-[#111827] shadow-lg focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
         href="#main-content"
@@ -199,26 +198,25 @@ export function Navbar() {
         Skip to main content
       </a>
 
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 md:gap-5 lg:grid lg:h-[72px] lg:grid-cols-[auto_minmax(260px,1fr)_auto] lg:px-8">
+      <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between gap-3 px-4 sm:px-6 md:gap-5 lg:grid lg:h-20 lg:grid-cols-[auto_minmax(320px,1fr)_auto] lg:px-8">
         <Link
           aria-label="HypeBuzz home"
-          className={`flex min-h-11 shrink-0 items-center gap-2.5 rounded-[10px] ${focusRing}`}
+          className={`flex min-h-11 shrink-0 items-center overflow-hidden rounded-[10px] bg-black ${focusRing}`}
           href="/"
         >
-          <span
-            aria-hidden="true"
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#2563EB] text-sm font-bold tracking-tight text-white shadow-sm"
-          >
-            HB
-          </span>
-          <span className="text-xl font-bold tracking-[-0.03em] text-[#111827]">
-            Hype<span className="text-[#2563EB]">Buzz</span>
-          </span>
+          <Image
+            alt=""
+            className="h-auto w-[132px] bg-black sm:w-[176px]"
+            height={887}
+            priority
+            src="/brand/hypebuzz-navbar-logo.png"
+            width={1776}
+          />
         </Link>
 
         <div className="hidden min-w-0 flex-1 justify-center md:flex">
           <SearchForm
-            className="w-full max-w-[28rem]"
+            className="w-full max-w-[48rem]"
             inputId="desktop-navbar-search"
           />
         </div>
@@ -236,8 +234,8 @@ export function Navbar() {
                 aria-current={isActive ? "page" : undefined}
                 className={`rounded-[10px] px-3 py-3 text-sm font-semibold transition-colors duration-150 motion-reduce:transition-none ${focusRing} ${
                   isActive
-                    ? "bg-[#EFF6FF] text-[#1D4ED8] shadow-[inset_0_-2px_0_#2563EB]"
-                    : "text-[#111827] hover:bg-[#EFF6FF] hover:text-[#1D4ED8]"
+                    ? "bg-white/10 text-[#60A5FA] shadow-[inset_0_-2px_0_#2563EB]"
+                    : "text-white hover:bg-white/10 hover:text-[#60A5FA]"
                 }`}
                 href={item.href}
               >
@@ -254,7 +252,7 @@ export function Navbar() {
             className={`flex h-11 w-11 items-center justify-center rounded-[10px] border transition-colors duration-150 motion-reduce:transition-none ${focusRing} ${
               wishlistIsActive
                 ? "border-[#2563EB] bg-[#EFF6FF] text-[#1D4ED8]"
-                : "border-[#E5E7EB] bg-white text-[#111827] hover:border-[#2563EB] hover:bg-[#EFF6FF] hover:text-[#1D4ED8]"
+                : "border-white/20 bg-white/5 text-white hover:border-[#2563EB] hover:bg-white/10 hover:text-[#60A5FA]"
             }`}
             href="/wishlist"
           >
@@ -275,7 +273,7 @@ export function Navbar() {
         </div>
       </div>
 
-      <div className="border-t border-[#E5E7EB] px-4 pb-3 pt-3 sm:px-6 md:hidden">
+      <div className="border-t border-white/10 bg-black px-4 pb-3 pt-3 sm:px-6 md:hidden">
         <SearchForm inputId="mobile-navbar-search" />
       </div>
 
