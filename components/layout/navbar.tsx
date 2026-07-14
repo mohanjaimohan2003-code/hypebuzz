@@ -5,9 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CategoryNavigation } from "./category-navigation";
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
+  type FocusEvent,
   type MouseEvent,
 } from "react";
 
@@ -97,22 +99,45 @@ function HeartIcon({ className = "h-5 w-5" }: IconProps) {
   );
 }
 
+function UserIcon({ className = "h-5 w-5" }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
+      <path d="M4.5 20c.8-4 3.3-6 7.5-6s6.7 2 7.5 6" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+    </svg>
+  );
+}
+
 type SearchFormProps = {
   className?: string;
   inputId: string;
+  onFocusChange: (inputId: string | null) => void;
+  onQueryChange: (query: string) => void;
+  query: string;
 };
 
-function SearchForm({ className = "", inputId }: SearchFormProps) {
-  const [query, setQuery] = useState("");
+function SearchForm({
+  className = "",
+  inputId,
+  onFocusChange,
+  onQueryChange,
+  query,
+}: SearchFormProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    setQuery(event.target.value);
+    onQueryChange(event.target.value);
   }
 
   function clearSearch() {
-    setQuery("");
+    onQueryChange("");
     inputRef.current?.focus();
+  }
+
+  function handleBlur(event: FocusEvent<HTMLFormElement>) {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      onFocusChange(null);
+    }
   }
 
   return (
@@ -120,6 +145,8 @@ function SearchForm({ className = "", inputId }: SearchFormProps) {
       action="/search"
       className={`relative ${className}`}
       method="get"
+      onBlurCapture={handleBlur}
+      onFocusCapture={() => onFocusChange(inputId)}
       role="search"
     >
       <label className="sr-only" htmlFor={inputId}>
@@ -159,11 +186,21 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Navbar() {
+type NavbarProps = {
+  onSearchActivityChange?: (active: boolean) => void;
+};
+
+export function Navbar({ onSearchActivityChange }: NavbarProps = {}) {
   const pathname = usePathname();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [focusedSearchId, setFocusedSearchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    onSearchActivityChange?.(focusedSearchId !== null || query.trim().length > 0);
+  }, [focusedSearchId, onSearchActivityChange, query]);
 
   function openMobileMenu() {
     if (!dialogRef.current?.open) {
@@ -190,7 +227,7 @@ export function Navbar() {
   const wishlistIsActive = isActivePath(pathname, "/wishlist");
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black font-sans shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black font-sans shadow-[0_1px_0_rgba(255,255,255,0.04)]">
       <a
         className="sr-only rounded-[10px] bg-white px-4 py-3 font-semibold text-[#111827] shadow-lg focus:fixed focus:left-4 focus:top-4 focus:z-[70] focus:not-sr-only focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
         href="#main-content"
@@ -206,11 +243,11 @@ export function Navbar() {
         >
           <Image
             alt=""
-            className="h-auto w-[132px] bg-black sm:w-[176px]"
+            className="h-auto w-[112px] bg-black sm:w-[132px] lg:w-[144px]"
             height={887}
             priority
-            src="/brand/hypebuzz-navbar-logo.png"
-            width={1776}
+            src="/brand/hypebuzz-logo.png"
+            width={1774}
           />
         </Link>
 
@@ -218,6 +255,9 @@ export function Navbar() {
           <SearchForm
             className="w-full max-w-[48rem]"
             inputId="desktop-navbar-search"
+            onFocusChange={setFocusedSearchId}
+            onQueryChange={setQuery}
+            query={query}
           />
         </div>
 
@@ -232,13 +272,14 @@ export function Navbar() {
               <Link
                 key={item.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`rounded-[10px] px-3 py-3 text-sm font-semibold transition-colors duration-150 motion-reduce:transition-none ${focusRing} ${
+                className={`flex min-h-11 items-center gap-2 rounded-[10px] px-3 py-2 text-sm font-semibold transition-colors duration-150 motion-reduce:transition-none ${focusRing} ${
                   isActive
                     ? "bg-white/10 text-[#60A5FA] shadow-[inset_0_-2px_0_#2563EB]"
                     : "text-white hover:bg-white/10 hover:text-[#60A5FA]"
                 }`}
                 href={item.href}
               >
+                {item.href === "/wishlist" ? <HeartIcon className="h-4 w-4" /> : <UserIcon className="h-4 w-4" />}
                 {item.label}
               </Link>
             );
@@ -274,7 +315,12 @@ export function Navbar() {
       </div>
 
       <div className="border-t border-white/10 bg-black px-4 pb-3 pt-3 sm:px-6 md:hidden">
-        <SearchForm inputId="mobile-navbar-search" />
+        <SearchForm
+          inputId="mobile-navbar-search"
+          onFocusChange={setFocusedSearchId}
+          onQueryChange={setQuery}
+          query={query}
+        />
       </div>
 
       <CategoryNavigation />
@@ -325,6 +371,7 @@ export function Navbar() {
                       href={item.href}
                       onClick={closeMobileMenu}
                     >
+                      {item.href === "/wishlist" ? <HeartIcon className="mr-3 h-5 w-5" /> : <UserIcon className="mr-3 h-5 w-5" />}
                       {item.label}
                       {isActive ? (
                         <span className="ml-auto text-xs font-medium text-[#1D4ED8]">

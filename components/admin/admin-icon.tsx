@@ -14,7 +14,10 @@ export type AdminIconName =
   | "menu"
   | "close"
   | "arrow-right"
-  | "plus";
+  | "plus"
+  | "edit"
+  | "archive"
+  | "search";
 
 type AdminIconProps = Omit<SVGProps<SVGSVGElement>, "name"> & {
   name: AdminIconName;
@@ -94,6 +97,24 @@ export function AdminIcon({ name, className = "h-5 w-5", ...props }: AdminIconPr
     close: <path d="m6 6 12 12M18 6 6 18" />,
     "arrow-right": <path d="M5 12h14M14 7l5 5-5 5" />,
     plus: <path d="M12 5v14M5 12h14" />,
+    edit: (
+      <>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4L16.5 3.5Z" />
+      </>
+    ),
+    archive: (
+      <>
+        <path d="M4 7h16v13H4V7Z" />
+        <path d="M3 4h18v3H3V4ZM9 11h6" />
+      </>
+    ),
+    search: (
+      <>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m16 16 4 4" />
+      </>
+    ),
   };
 
   return (

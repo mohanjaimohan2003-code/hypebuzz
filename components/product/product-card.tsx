@@ -5,7 +5,7 @@ import { CompareButton, WishlistButton } from "./product-card-actions";
 export type ProductCardProduct = {
   id: string; name: string; brand: string; imageSrc: string; imageAlt: string;
   price: number; currency?: string; storeCount: number; productHref: string;
-  dealsHref: string; initiallyWishlisted?: boolean;
+  dealsHref: string; badge?: string; initiallyWishlisted?: boolean;
 };
 
 const focus = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2";
@@ -18,7 +18,7 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
         <Link aria-label={`View ${product.name}`} className={`block h-full w-full ${focus}`} href={product.productHref}>
           <Image alt={product.imageAlt} className="object-contain p-5 transition-transform duration-200 group-hover:scale-[1.03] motion-reduce:transform-none" fill sizes="(max-width: 639px) 78vw, (max-width: 1023px) 38vw, 20vw" src={product.imageSrc} />
         </Link>
-        <span className="absolute left-3 top-3 rounded-md bg-[#1D4ED8] px-2 py-1 text-[11px] font-bold text-white">Best Price</span>
+        {product.badge ? <span className="absolute left-3 top-3 rounded-md bg-[#1D4ED8] px-2 py-1 text-[11px] font-bold text-white">{product.badge}</span> : null}
         <div className="absolute right-2 top-2 scale-90"><WishlistButton initiallyWishlisted={product.initiallyWishlisted} productName={product.name} /></div>
       </div>
       <div className="flex flex-1 flex-col border-t border-[#F1F5F9] p-4">

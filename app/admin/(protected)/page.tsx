@@ -23,7 +23,7 @@ const quickActions: Array<{
   {
     label: "Add Product",
     description: "Prepare the product catalog workflow.",
-    href: "/admin/products",
+    href: "/admin/products/new",
     icon: "products",
   },
   {

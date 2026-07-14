@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "HypeBuzz",
-  description: "Discover trending products, deals, and recommendations.",
+  title: "HypeBuzz — Handpicked Deals. Everyday Savings.",
+  description: "Compare products and discover handpicked deals across trusted online stores.",
 };
 
 export default function RootLayout({

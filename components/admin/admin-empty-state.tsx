@@ -35,3 +35,5 @@ export function AdminEmptyState({
     </div>
   );
 }
+
+export { AdminEmptyState as EmptyState };
