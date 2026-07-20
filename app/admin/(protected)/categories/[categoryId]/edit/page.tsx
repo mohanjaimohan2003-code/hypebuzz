@@ -23,7 +23,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ c
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-[#111827] sm:text-4xl">Edit Category</h1>
         <p className="mt-3 max-w-2xl text-base leading-7 text-[#6B7280]">Update category details and visibility for <strong className="font-semibold text-[#111827]">{category.name}</strong>.</p>
       </header>
-      <CategoryForm category={{ id: category.id, name: category.name, slug: category.slug, description: category.description ?? "", imageUrl: category.image_url ?? "", isActive: category.is_active }} mode="edit" />
+      <CategoryForm category={{ id: category.id, name: category.name, slug: category.slug, description: category.description ?? "", iconUrl: category.image_url ?? "", displayOrder: category.display_order, isActive: category.is_active }} mode="edit" />
     </div>
   );
 }

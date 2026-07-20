@@ -1,18 +1,15 @@
 export type CategoryLink = { label: string; href: string };
 export type CategoryGroup = { label: string; href: string; items: readonly CategoryLink[] };
 type TopCategory = CategoryLink & { accent?: boolean };
+import { publicCategories } from "@/lib/data/public-categories";
 const href = (slug: string) => `/categories/${slug}`;
 
+export const fallbackNavigationCategories = publicCategories;
+
 export const topCategories: readonly TopCategory[] = [
-  { label: "Home", href: "/" }, { label: "Mobiles", href: href("mobiles") },
-  { label: "Laptops", href: href("laptops") }, { label: "Electronics", href: href("electronics") },
-  { label: "Audio", href: href("audio") }, { label: "Smartwatches", href: href("smartwatches") },
-  { label: "Cameras", href: href("cameras") }, { label: "TVs", href: href("tvs") },
-  { label: "Gaming", href: href("gaming") }, { label: "Home & Kitchen", href: href("home-kitchen") },
-  { label: "Fashion", href: href("fashion") }, { label: "Beauty", href: href("beauty") },
-  { label: "Sports", href: href("sports") }, { label: "Automotive", href: href("automotive") },
-  { label: "Finance", href: href("finance") }, { label: "Travel", href: href("travel") },
-  { label: "Trending", href: "/trending", accent: true },
+  { label: "Home", href: "/" },
+  ...publicCategories.map((category) => ({ label: category.name, href: href(category.slug) })),
+  { label: "Trending", href: "/search?trending=true", accent: true },
 ];
 
 const links = (entries: ReadonlyArray<readonly [string, string]>): CategoryLink[] =>

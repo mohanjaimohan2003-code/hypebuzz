@@ -1,11 +1,18 @@
 export type BrandFormValues = {
   name: string;
   slug: string;
+  description: string;
   logoUrl: string;
+  websiteUrl: string;
   isActive: boolean;
 };
 
-export type BrandField = "name" | "slug" | "logoUrl";
+export type BrandField =
+  | "name"
+  | "slug"
+  | "description"
+  | "logoUrl"
+  | "websiteUrl";
 export type BrandFieldErrors = Partial<Record<BrandField, string>>;
 
 export type BrandActionState = {
@@ -48,7 +55,9 @@ export function validateBrandForm(formData: FormData):
   const values: BrandFormValues = {
     name: getString(formData, "name"),
     slug: getString(formData, "slug").toLowerCase(),
+    description: getString(formData, "description"),
     logoUrl: getString(formData, "logoUrl"),
+    websiteUrl: getString(formData, "websiteUrl"),
     isActive: formData.get("isActive") === "on",
   };
   const fieldErrors: BrandFieldErrors = {};
@@ -61,6 +70,10 @@ export function validateBrandForm(formData: FormData):
     fieldErrors.slug = "Use lowercase letters, numbers, and single hyphens only.";
   }
 
+  if (values.description.length > 500) {
+    fieldErrors.description = "Keep the description within 500 characters.";
+  }
+
   if (values.logoUrl.length > 2048) {
     fieldErrors.logoUrl = "Keep the logo URL within 2,048 characters.";
   } else if (values.logoUrl) {
@@ -71,6 +84,20 @@ export function validateBrandForm(formData: FormData):
       }
     } catch {
       fieldErrors.logoUrl = "Enter a complete HTTP or HTTPS logo URL.";
+    }
+  }
+
+  if (values.websiteUrl.length > 2048) {
+    fieldErrors.websiteUrl = "Keep the website URL within 2,048 characters.";
+  } else if (values.websiteUrl) {
+    try {
+      const url = new URL(values.websiteUrl);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        fieldErrors.websiteUrl = "Use an HTTP or HTTPS website URL.";
+      }
+    } catch {
+      fieldErrors.websiteUrl =
+        "Enter a complete HTTP or HTTPS website URL.";
     }
   }
 

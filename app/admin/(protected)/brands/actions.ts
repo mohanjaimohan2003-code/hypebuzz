@@ -40,7 +40,9 @@ function brandPayload(values: BrandFormValues) {
   return {
     name: values.name,
     slug: values.slug,
+    description: values.description || null,
     logo_url: values.logoUrl || null,
+    website_url: values.websiteUrl || null,
     is_active: values.isActive,
   };
 }

@@ -41,7 +41,8 @@ function categoryPayload(values: CategoryFormValues) {
     name: values.name,
     slug: values.slug,
     description: values.description || null,
-    image_url: values.imageUrl || null,
+    image_url: values.iconUrl || null,
+    display_order: values.displayOrder,
     is_active: values.isActive,
   };
 }

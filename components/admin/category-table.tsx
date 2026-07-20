@@ -13,14 +13,6 @@ function formatDate(value: string) {
   return Number.isNaN(date.getTime()) ? "Not available" : dateFormatter.format(date);
 }
 
-function Description({ value }: { value: string | null }) {
-  return value ? (
-    <span className="line-clamp-2">{value}</span>
-  ) : (
-    <span className="text-[#9CA3AF]">No description</span>
-  );
-}
-
 export function CategoryTable({ categories }: { categories: AdminCategoryListItem[] }) {
   return (
     <>
@@ -34,12 +26,19 @@ export function CategoryTable({ categories }: { categories: AdminCategoryListIte
               </div>
               <CategoryStatusBadge isActive={category.is_active} />
             </div>
-            <p className="mt-4 text-sm leading-6 text-[#4B5563]">
-              <Description value={category.description} />
-            </p>
-            <dl className="mt-4 border-t border-[#E5E7EB] pt-4 text-sm">
-              <dt className="text-[#6B7280]">Created</dt>
-              <dd className="mt-1 font-medium text-[#111827]"><time dateTime={category.created_at}>{formatDate(category.created_at)}</time></dd>
+            <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-[#E5E7EB] pt-4 text-sm">
+              <div>
+                <dt className="text-[#6B7280]">Products</dt>
+                <dd className="mt-1 font-semibold text-[#111827]">{category.productCount}</dd>
+              </div>
+              <div>
+                <dt className="text-[#6B7280]">Display order</dt>
+                <dd className="mt-1 font-semibold text-[#111827]">{category.display_order}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-[#6B7280]">Updated</dt>
+                <dd className="mt-1 font-medium text-[#111827]"><time dateTime={category.updated_at}>{formatDate(category.updated_at)}</time></dd>
+              </div>
             </dl>
             <div className="mt-4 border-t border-[#E5E7EB] pt-4">
               <CategoryActions categoryId={category.id} categoryName={category.name} isActive={category.is_active} />
@@ -49,15 +48,16 @@ export function CategoryTable({ categories }: { categories: AdminCategoryListIte
       </div>
 
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[62rem] border-collapse text-left">
-          <caption className="sr-only">Categories sorted from newest to oldest</caption>
+        <table className="w-full min-w-[68rem] border-collapse text-left">
+          <caption className="sr-only">Categories sorted by display order</caption>
           <thead className="bg-[#F8FAFC] text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
             <tr>
               <th className="px-5 py-3" scope="col">Name</th>
               <th className="px-5 py-3" scope="col">Slug</th>
-              <th className="px-5 py-3" scope="col">Description</th>
+              <th className="px-5 py-3" scope="col">Product count</th>
               <th className="px-5 py-3" scope="col">Status</th>
-              <th className="px-5 py-3" scope="col">Created</th>
+              <th className="px-5 py-3" scope="col">Display order</th>
+              <th className="px-5 py-3" scope="col">Updated</th>
               <th className="px-5 py-3" scope="col">Actions</th>
             </tr>
           </thead>
@@ -66,9 +66,10 @@ export function CategoryTable({ categories }: { categories: AdminCategoryListIte
               <tr key={category.id} className="align-middle">
                 <th className="px-5 py-4 text-sm font-semibold text-[#111827]" scope="row">{category.name}</th>
                 <td className="px-5 py-4 text-sm text-[#6B7280]">/{category.slug}</td>
-                <td className="max-w-xs px-5 py-4 text-sm leading-6 text-[#4B5563]"><Description value={category.description} /></td>
+                <td className="px-5 py-4 text-sm font-semibold text-[#111827]">{category.productCount}</td>
                 <td className="px-5 py-4"><CategoryStatusBadge isActive={category.is_active} /></td>
-                <td className="px-5 py-4 text-sm text-[#6B7280]"><time dateTime={category.created_at}>{formatDate(category.created_at)}</time></td>
+                <td className="px-5 py-4 text-sm font-semibold text-[#111827]">{category.display_order}</td>
+                <td className="px-5 py-4 text-sm text-[#6B7280]"><time dateTime={category.updated_at}>{formatDate(category.updated_at)}</time></td>
                 <td className="px-5 py-4"><CategoryActions categoryId={category.id} categoryName={category.name} isActive={category.is_active} /></td>
               </tr>
             ))}

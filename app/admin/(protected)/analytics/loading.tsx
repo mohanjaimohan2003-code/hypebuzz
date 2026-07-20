@@ -1,0 +1,3 @@
+export default function AnalyticsLoading() {
+  return <div aria-busy="true" aria-label="Loading affiliate analytics" className="animate-pulse"><div className="h-5 w-40 rounded bg-[#E5E7EB]" /><div className="mt-3 h-10 w-72 rounded bg-[#E5E7EB]" /><div className="mt-8 grid gap-4 sm:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <div className="h-36 rounded-2xl bg-[#E5E7EB]" key={index} />)}</div><div className="mt-8 grid gap-6 lg:grid-cols-2"><div className="h-80 rounded-2xl bg-[#E5E7EB]" /><div className="h-80 rounded-2xl bg-[#E5E7EB]" /></div><div className="mt-8 h-96 rounded-2xl bg-[#E5E7EB]" /></div>;
+}

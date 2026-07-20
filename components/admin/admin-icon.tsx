@@ -7,6 +7,8 @@ export type AdminIconName =
   | "brands"
   | "merchants"
   | "offers"
+  | "blog"
+  | "analytics"
   | "import"
   | "settings"
   | "website"
@@ -66,6 +68,18 @@ export function AdminIcon({ name, className = "h-5 w-5", ...props }: AdminIconPr
         <path d="M20 13.5 13.5 20 4 10.5V4h6.5L20 13.5Z" />
         <circle cx="8.5" cy="8.5" r="1.25" />
         <path d="m13 10-3 6M10.5 11h.01M12.5 15h.01" />
+      </>
+    ),
+    blog: (
+      <>
+        <path d="M5 4h14v16H5V4Z" />
+        <path d="M8 8h8M8 12h8M8 16h5" />
+      </>
+    ),
+    analytics: (
+      <>
+        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+        <path d="m4 7 6-4 6 7 5-4" />
       </>
     ),
     import: (

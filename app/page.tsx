@@ -1,30 +1,60 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { Suspense } from "react";
 import { HomeFeatureCard } from "@/components/home/home-feature-card";
-import { PopularBrands } from "@/components/home/popular-brands";
+import { HomepageCatalog, HomepageCatalogSkeleton } from "@/components/home/homepage-catalog";
 import { Footer } from "@/components/layout/footer";
 import { HomepageHeader } from "@/components/layout/homepage-header";
-import { ProductCard } from "@/components/product/product-card";
 import { homeFeatures } from "@/lib/data/homepage-content";
-import { sampleProducts } from "@/lib/data/sample-products";
+import { absoluteUrl, jsonLd, siteDescription, siteTitle } from "@/lib/seo/site";
 
-function ArrowIcon() {
-  return <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>;
-}
+export const metadata: Metadata = {
+  title: { absolute: siteTitle },
+  description: siteDescription,
+  alternates: { canonical: absoluteUrl("/") },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    title: siteTitle,
+    description: siteDescription,
+    url: absoluteUrl("/"),
+    siteName: "HypeBuzz",
+    images: [{ url: absoluteUrl("/brand/hypebuzz-banner.png"), alt: "HypeBuzz product discovery and price comparison platform" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: [absoluteUrl("/brand/hypebuzz-banner.png")],
+  },
+};
 
-function ProductSection({ title, description, products, href }: { title: string; description: string; products: typeof sampleProducts; href: string }) {
-  const headingId = `${title.toLowerCase().replaceAll(" ", "-")}-heading`;
-
-  return (
-    <section aria-labelledby={headingId} className="py-10 sm:py-12">
-      <div className="mb-6 flex items-end justify-between gap-4">
-        <div><h2 className="text-2xl font-bold tracking-tight text-[#111827] sm:text-3xl" id={headingId}>{title}</h2><p className="mt-1 text-sm leading-5 text-[#6B7280]">{description}</p></div>
-        <Link className="flex min-h-11 shrink-0 items-center gap-2 rounded-[10px] px-3 text-sm font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]" href={href}>View all <ArrowIcon /></Link>
-      </div>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-4">{products.map((product) => <ProductCard key={`${title}-${product.id}`} product={product} />)}</div>
-    </section>
-  );
-}
+const homepageStructuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${absoluteUrl("/")}#organization`,
+      name: "HypeBuzz",
+      url: absoluteUrl("/"),
+      logo: absoluteUrl("/icon.png"),
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${absoluteUrl("/")}#website`,
+      name: "HypeBuzz",
+      url: absoluteUrl("/"),
+      description: siteDescription,
+      publisher: { "@id": `${absoluteUrl("/")}#organization` },
+      potentialAction: {
+        "@type": "SearchAction",
+        target: { "@type": "EntryPoint", urlTemplate: `${absoluteUrl("/search")}?q={search_term_string}` },
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ],
+};
 
 export default function Home() {
   return (
@@ -48,13 +78,11 @@ export default function Home() {
             </div>
           </section>
 
-          <ProductSection description="Sample products shoppers are comparing across stores." href="/trending" products={sampleProducts} title="Trending Deals" />
-          <div className="border-t border-[#E5E7EB]" />
-          <ProductSection description="A sample selection for smarter product discovery." href="/collections/featured" products={[...sampleProducts].reverse()} title="Featured Products" />
-          <PopularBrands />
+          <Suspense fallback={<HomepageCatalogSkeleton />}><HomepageCatalog /></Suspense>
         </div>
       </main>
       <Footer />
+      <script dangerouslySetInnerHTML={{ __html: jsonLd(homepageStructuredData) }} type="application/ld+json" />
     </>
   );
 }

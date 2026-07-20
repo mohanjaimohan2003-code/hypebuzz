@@ -17,7 +17,8 @@ export type CategoryFormInitialCategory = {
   name: string;
   slug: string;
   description: string;
-  imageUrl: string;
+  iconUrl: string;
+  displayOrder: number;
   isActive: boolean;
 };
 
@@ -117,22 +118,43 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
             <FieldError error={state.fieldErrors.description} field="description" />
           </div>
 
-          <div className="lg:col-span-2">
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="category-image-url">Image URL <span className="font-normal text-[#6B7280]">(optional)</span></label>
+          <div>
+            <label className="text-sm font-semibold text-[#111827]" htmlFor="category-icon-url">Icon URL <span className="font-normal text-[#6B7280]">(optional)</span></label>
             <input
-              aria-describedby={describedBy("imageUrl", "category-image-url-hint")}
-              aria-invalid={Boolean(state.fieldErrors.imageUrl)}
+              aria-describedby={describedBy("iconUrl", "category-icon-url-hint")}
+              aria-invalid={Boolean(state.fieldErrors.iconUrl)}
               className={inputClass}
-              defaultValue={category?.imageUrl ?? ""}
+              defaultValue={category?.iconUrl ?? ""}
               disabled={isPending}
-              id="category-image-url"
+              id="category-icon-url"
               maxLength={2048}
-              name="imageUrl"
-              placeholder="https://example.com/category-image.jpg"
+              name="iconUrl"
+              placeholder="https://example.com/category-icon.svg"
               type="url"
             />
-            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="category-image-url-hint">Temporary HTTP or HTTPS image address; uploads are not part of this task.</p>
-            <FieldError error={state.fieldErrors.imageUrl} field="imageUrl" />
+            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="category-icon-url-hint">Temporary HTTP or HTTPS icon address; uploads are not part of this task.</p>
+            <FieldError error={state.fieldErrors.iconUrl} field="iconUrl" />
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-[#111827]" htmlFor="category-display-order">Display order</label>
+            <input
+              aria-describedby={describedBy("displayOrder", "category-display-order-hint")}
+              aria-invalid={Boolean(state.fieldErrors.displayOrder)}
+              className={inputClass}
+              defaultValue={category?.displayOrder ?? 0}
+              disabled={isPending}
+              id="category-display-order"
+              inputMode="numeric"
+              max={1000000}
+              min={0}
+              name="displayOrder"
+              required
+              step={1}
+              type="number"
+            />
+            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="category-display-order-hint">Lower numbers appear first.</p>
+            <FieldError error={state.fieldErrors.displayOrder} field="displayOrder" />
           </div>
         </div>
       </fieldset>

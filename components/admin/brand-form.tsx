@@ -14,7 +14,9 @@ export type BrandFormInitialBrand = {
   id: string;
   name: string;
   slug: string;
+  description: string;
   logoUrl: string;
+  websiteUrl: string;
   isActive: boolean;
 };
 
@@ -56,11 +58,23 @@ export function BrandForm({ mode, brand }: BrandFormProps) {
             <FieldError error={state.fieldErrors.slug} field="slug" />
           </div>
           <div className="lg:col-span-2">
+            <label className="text-sm font-semibold text-[#111827]" htmlFor="brand-description">Description <span className="font-normal text-[#6B7280]">(optional)</span></label>
+            <textarea aria-describedby={describedBy("description", "brand-description-hint")} aria-invalid={Boolean(state.fieldErrors.description)} className={`${inputClass} min-h-32 py-3`} defaultValue={brand?.description ?? ""} disabled={isPending} id="brand-description" maxLength={500} name="description" />
+            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="brand-description-hint">Internal brand context, up to 500 characters.</p>
+            <FieldError error={state.fieldErrors.description} field="description" />
+          </div>
+          <div className="lg:col-span-2">
             <label className="text-sm font-semibold text-[#111827]" htmlFor="brand-logo-url">Logo URL <span className="font-normal text-[#6B7280]">(optional)</span></label>
             <div className="mt-2 grid gap-4 sm:grid-cols-[6rem_minmax(0,1fr)] sm:items-start">
               <BrandLogoPreview large logoUrl={logoUrl || null} name={name || "Brand"} />
               <div><input aria-describedby={describedBy("logoUrl", "brand-logo-url-hint")} aria-invalid={Boolean(state.fieldErrors.logoUrl)} className="min-h-12 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-4 text-sm text-[#111827] outline-none transition-colors placeholder:text-[#6B7280] hover:border-[#9CA3AF] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] motion-reduce:transition-none" disabled={isPending} id="brand-logo-url" maxLength={2048} name="logoUrl" onChange={(event) => setLogoUrl(event.target.value)} placeholder="https://example.com/logo.png" type="url" value={logoUrl} /><p className="mt-2 text-xs leading-5 text-[#6B7280]" id="brand-logo-url-hint">The preview falls back safely when the URL is empty or unavailable.</p><FieldError error={state.fieldErrors.logoUrl} field="logoUrl" /></div>
             </div>
+          </div>
+          <div className="lg:col-span-2">
+            <label className="text-sm font-semibold text-[#111827]" htmlFor="brand-website-url">Website URL <span className="font-normal text-[#6B7280]">(optional)</span></label>
+            <input aria-describedby={describedBy("websiteUrl", "brand-website-url-hint")} aria-invalid={Boolean(state.fieldErrors.websiteUrl)} className={inputClass} defaultValue={brand?.websiteUrl ?? ""} disabled={isPending} id="brand-website-url" maxLength={2048} name="websiteUrl" placeholder="https://www.example.com" type="url" />
+            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="brand-website-url-hint">Official HTTP or HTTPS brand website.</p>
+            <FieldError error={state.fieldErrors.websiteUrl} field="websiteUrl" />
           </div>
         </div>
       </fieldset>

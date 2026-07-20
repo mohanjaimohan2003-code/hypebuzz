@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CategoryNavigation } from "./category-navigation";
+import type { PublicNavigationCategory } from "@/lib/data/public-category";
 import {
   useEffect,
   useRef,
@@ -160,7 +161,7 @@ function SearchForm({
         id={inputId}
         name="q"
         onChange={handleChange}
-        placeholder="Search products, brands, and categories"
+        placeholder="Search products, brands, categories, and merchants"
         type="search"
         value={query}
       />
@@ -187,10 +188,11 @@ function isActivePath(pathname: string, href: string) {
 }
 
 type NavbarProps = {
+  categories: PublicNavigationCategory[];
   onSearchActivityChange?: (active: boolean) => void;
 };
 
-export function Navbar({ onSearchActivityChange }: NavbarProps = {}) {
+export function Navbar({ categories, onSearchActivityChange }: NavbarProps) {
   const pathname = usePathname();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -323,7 +325,7 @@ export function Navbar({ onSearchActivityChange }: NavbarProps = {}) {
         />
       </div>
 
-      <CategoryNavigation />
+      <CategoryNavigation categories={categories} />
 
       <dialog
         ref={dialogRef}

@@ -36,14 +36,3 @@ export const homeFeatures = [
     accent: "purple",
   },
 ] satisfies readonly HomeFeature[];
-
-export const popularBrands = [
-  { name: "Apple", href: "/search?q=Apple" },
-  { name: "Samsung", href: "/search?q=Samsung" },
-  { name: "Sony", href: "/search?q=Sony" },
-  { name: "LG", href: "/search?q=LG" },
-  { name: "boAt", href: "/search?q=boAt" },
-  { name: "OnePlus", href: "/search?q=OnePlus" },
-  { name: "Dell", href: "/search?q=Dell" },
-  { name: "HP", href: "/search?q=HP" },
-] as const;

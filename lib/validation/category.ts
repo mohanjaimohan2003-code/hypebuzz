@@ -2,11 +2,17 @@ export type CategoryFormValues = {
   name: string;
   slug: string;
   description: string;
-  imageUrl: string;
+  iconUrl: string;
+  displayOrder: number;
   isActive: boolean;
 };
 
-export type CategoryField = "name" | "slug" | "description" | "imageUrl";
+export type CategoryField =
+  | "name"
+  | "slug"
+  | "description"
+  | "iconUrl"
+  | "displayOrder";
 
 export type CategoryFieldErrors = Partial<Record<CategoryField, string>>;
 
@@ -47,11 +53,15 @@ export function isCategoryUuid(value: string) {
 export function validateCategoryForm(formData: FormData):
   | { success: true; data: CategoryFormValues }
   | { success: false; state: CategoryActionState } {
+  const displayOrderInput = getString(formData, "displayOrder");
   const values: CategoryFormValues = {
     name: getString(formData, "name"),
     slug: getString(formData, "slug").toLowerCase(),
     description: getString(formData, "description"),
-    imageUrl: getString(formData, "imageUrl"),
+    iconUrl: getString(formData, "iconUrl"),
+    displayOrder: /^\d+$/.test(displayOrderInput)
+      ? Number(displayOrderInput)
+      : Number.NaN,
     isActive: formData.get("isActive") === "on",
   };
   const fieldErrors: CategoryFieldErrors = {};
@@ -68,17 +78,26 @@ export function validateCategoryForm(formData: FormData):
     fieldErrors.description = "Keep the description within 500 characters.";
   }
 
-  if (values.imageUrl.length > 2048) {
-    fieldErrors.imageUrl = "Keep the image URL within 2,048 characters.";
-  } else if (values.imageUrl) {
+  if (values.iconUrl.length > 2048) {
+    fieldErrors.iconUrl = "Keep the icon URL within 2,048 characters.";
+  } else if (values.iconUrl) {
     try {
-      const url = new URL(values.imageUrl);
+      const url = new URL(values.iconUrl);
       if (url.protocol !== "http:" && url.protocol !== "https:") {
-        fieldErrors.imageUrl = "Use an HTTP or HTTPS image URL.";
+        fieldErrors.iconUrl = "Use an HTTP or HTTPS icon URL.";
       }
     } catch {
-      fieldErrors.imageUrl = "Enter a complete HTTP or HTTPS image URL.";
+      fieldErrors.iconUrl = "Enter a complete HTTP or HTTPS icon URL.";
     }
+  }
+
+  if (
+    !Number.isSafeInteger(values.displayOrder) ||
+    values.displayOrder < 0 ||
+    values.displayOrder > 1_000_000
+  ) {
+    fieldErrors.displayOrder =
+      "Enter a whole-number display order between 0 and 1,000,000.";
   }
 
   if (Object.keys(fieldErrors).length > 0) {

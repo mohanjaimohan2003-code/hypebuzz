@@ -1,0 +1,3 @@
+export default function ProductLoading() {
+  return <main aria-busy="true" aria-label="Loading product" className="min-h-screen bg-[#F8FAFC]"><div className="mx-auto max-w-[1280px] animate-pulse px-4 py-8 sm:px-6 lg:px-8"><div className="h-5 w-64 rounded bg-[#E5E7EB]" /><div className="mt-6 grid gap-8 lg:grid-cols-2"><div className="aspect-square rounded-2xl bg-[#E5E7EB]" /><div><div className="h-7 w-32 rounded bg-[#E5E7EB]" /><div className="mt-4 h-12 w-full rounded bg-[#E5E7EB]" /><div className="mt-4 h-24 w-full rounded bg-[#E5E7EB]" /><div className="mt-6 h-48 rounded-2xl bg-[#E5E7EB]" /></div></div></div></main>;
+}

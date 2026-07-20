@@ -17,7 +17,7 @@ export default async function EditBrandPage({ params }: { params: Promise<{ bran
     <div className="mx-auto max-w-5xl">
       <Link className="inline-flex min-h-11 items-center rounded-[10px] px-2 text-sm font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" href="/admin/brands">&larr; Back to brands</Link>
       <header className="mt-4"><p className="text-sm font-semibold text-[#2563EB]">Catalog management</p><h1 className="mt-2 text-3xl font-bold tracking-tight text-[#111827] sm:text-4xl">Edit Brand</h1><p className="mt-3 max-w-2xl text-base leading-7 text-[#6B7280]">Update brand identity and visibility for <strong className="font-semibold text-[#111827]">{brand.name}</strong>.</p></header>
-      <BrandForm brand={{ id: brand.id, name: brand.name, slug: brand.slug, logoUrl: brand.logo_url ?? "", isActive: brand.is_active }} mode="edit" />
+      <BrandForm brand={{ id: brand.id, name: brand.name, slug: brand.slug, description: brand.description ?? "", logoUrl: brand.logo_url ?? "", websiteUrl: brand.website_url ?? "", isActive: brand.is_active }} mode="edit" />
     </div>
   );
 }
