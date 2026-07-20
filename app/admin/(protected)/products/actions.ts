@@ -19,11 +19,61 @@ function authorizationError(): ProductActionState {
   };
 }
 
-function databaseError(error: { code?: string } | null): ProductActionState {
+type SupabaseDatabaseError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
+function extractDatabaseObject(
+  error: SupabaseDatabaseError,
+  kind: "table" | "column" | "constraint",
+) {
+  const text = [error.message, error.details, error.hint].filter(Boolean).join(" ");
+  const patterns = {
+    table: [/table [\"']?([\w.]+)[\"']?/i, /relation [\"']?([\w.]+)[\"']?/i],
+    column: [/column [\"']?([\w.]+)[\"']?/i],
+    constraint: [/constraint [\"']?([\w.]+)[\"']?/i],
+  };
+
+  for (const pattern of patterns[kind]) {
+    const match = text.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+
+  return "not reported";
+}
+
+function databaseError(
+  error: SupabaseDatabaseError | null,
+  operation: "insert" | "update",
+): ProductActionState {
+  const reportedTable = extractDatabaseObject(error ?? {}, "table");
+  const diagnostic = {
+    operation,
+    code: error?.code ?? "unknown",
+    message: error?.message ?? "Supabase returned an unknown database error.",
+    table: reportedTable === "not reported" ? "products" : reportedTable,
+    column: extractDatabaseObject(error ?? {}, "column"),
+    constraint: extractDatabaseObject(error ?? {}, "constraint"),
+    details: error?.details ?? "not reported",
+    hint: error?.hint ?? "not reported",
+  };
+
+  console.error("Supabase product save failed", diagnostic);
+
+  const diagnosticMessage = [
+    `Database error ${diagnostic.code}: ${diagnostic.message}`,
+    `Table: ${diagnostic.table}`,
+    `Column: ${diagnostic.column}`,
+    `Constraint: ${diagnostic.constraint}`,
+  ].join(" | ");
+
   if (error?.code === "23505") {
     return {
       status: "error",
-      message: "That slug is already in use. Choose a different slug.",
+      message: diagnosticMessage,
       fieldErrors: { slug: "This slug is already assigned to another product." },
     };
   }
@@ -31,14 +81,14 @@ function databaseError(error: { code?: string } | null): ProductActionState {
   if (error?.code === "23503") {
     return {
       status: "error",
-      message: "The selected category is no longer available.",
+      message: diagnosticMessage,
       fieldErrors: { categoryId: "Choose an available category." },
     };
   }
 
   return {
     status: "error",
-    message: "The product could not be saved. Please try again.",
+    message: diagnosticMessage,
     fieldErrors: {},
   };
 }
@@ -70,7 +120,10 @@ async function isAuthorizedAdmin() {
   return access.status === "authenticated";
 }
 
-async function categoryExists(categoryId: string) {
+async function categoryExists(categoryId: string): Promise<{
+  exists: boolean;
+  error?: SupabaseDatabaseError;
+}> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
@@ -78,7 +131,8 @@ async function categoryExists(categoryId: string) {
     .eq("id", categoryId)
     .maybeSingle();
 
-  return !error && Boolean(data);
+  if (error) return { exists: false, error };
+  return { exists: Boolean(data) };
 }
 
 export async function createProduct(
@@ -90,7 +144,9 @@ export async function createProduct(
   const validation = validateProductForm(formData);
   if (!validation.success) return validation.state;
 
-  if (!(await categoryExists(validation.data.categoryId))) {
+  const category = await categoryExists(validation.data.categoryId);
+  if (category.error) return databaseError(category.error, "insert");
+  if (!category.exists) {
     return {
       status: "error",
       message: "The selected category is no longer available.",
@@ -103,7 +159,7 @@ export async function createProduct(
     .from("products")
     .insert(productPayload(validation.data));
 
-  if (error) return databaseError(error);
+  if (error) return databaseError(error, "insert");
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=created");
@@ -123,7 +179,9 @@ export async function updateProduct(
   const validation = validateProductForm(formData);
   if (!validation.success) return validation.state;
 
-  if (!(await categoryExists(validation.data.categoryId))) {
+  const category = await categoryExists(validation.data.categoryId);
+  if (category.error) return databaseError(category.error, "update");
+  if (!category.exists) {
     return {
       status: "error",
       message: "The selected category is no longer available.",
@@ -139,7 +197,7 @@ export async function updateProduct(
     .select("id")
     .maybeSingle();
 
-  if (error) return databaseError(error);
+  if (error) return databaseError(error, "update");
   if (!data) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
@@ -167,7 +225,7 @@ export async function archiveProduct(
     .select("id")
     .maybeSingle();
 
-  if (error) return databaseError(error);
+  if (error) return databaseError(error, "update");
   if (!data) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
