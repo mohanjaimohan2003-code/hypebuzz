@@ -11,8 +11,6 @@ import { publicCategories } from "@/lib/data/public-categories";
 import { absoluteUrl, jsonLd } from "@/lib/seo/site";
 import { hasCategoryFilters, parseCategoryProductParams } from "@/lib/validation/category-products";
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return publicCategories.map(({ slug }) => ({ slug }));
 }
@@ -94,8 +92,6 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
             <input className="min-h-11 min-w-0 flex-1 rounded-[10px] border border-[#D1D5DB] bg-white px-4 text-sm text-[#111827] focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-[#2563EB]" defaultValue={filters.q} id="category-search" name="q" placeholder={`Search within ${category.name}`} type="search" />
             <button className="min-h-11 rounded-[10px] bg-[#2563EB] px-5 text-sm font-bold text-white hover:bg-[#1D4ED8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" type="submit">Search</button>
           </form>
-
-          {result.hasError ? <div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm text-[#991B1B]" role="alert">Some category data could not be loaded. Please try again.</div> : null}
 
           <div className="mt-8 flex flex-col items-end gap-6 lg:flex-row lg:items-start">
             <SearchFilters action={categoryHref} brands={result.brands} categories={[]} filters={filters} hideCategory merchants={result.merchants} resetHref={categoryHref} showEditorialFilters />

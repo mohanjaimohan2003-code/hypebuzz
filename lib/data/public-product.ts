@@ -72,6 +72,14 @@ type RelatedRow = {
 
 const fallbackImage = "/products/aurora-headphones.svg";
 
+function logProductQueryError(section: string, error: { code?: string; message?: string; details?: string; hint?: string } | null) {
+  if (!error) return;
+  console.error("Supabase product detail query failed", {
+    section, code: error.code ?? "unknown", message: error.message ?? "Unknown Supabase error",
+    details: error.details ?? "not reported", hint: error.hint ?? "not reported",
+  });
+}
+
 function readProductContent(value: Json) {
   if (!value || Array.isArray(value) || typeof value !== "object") {
     return { features: [], specifications: [] };
@@ -107,8 +115,10 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     .from("products")
     .select("id, name, slug, short_description, description, primary_image_url, specifications, brand_id, category_id, updated_at, brand:brands(name, slug), category:categories(name, slug), product_offers(id, current_price, original_price, currency, availability, last_checked_at, merchant:merchants(name, slug, logo_url))")
     .eq("slug", slug)
+    .eq("status", "published")
     .maybeSingle();
 
+  logProductQueryError("product", error);
   if (error || !data) return null;
   const product = data as unknown as ProductRow;
   const validOffers = product.product_offers.filter((offer) => offer.merchant);
@@ -143,6 +153,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
       .from("products")
       .select("id, name, slug, primary_image_url, brand:brands(name), product_offers(current_price, currency, merchant_id)")
       .neq("id", product.id)
+      .eq("status", "published")
       .limit(8);
     const filters = [
       product.category_id ? `category_id.eq.${product.category_id}` : null,
@@ -150,6 +161,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     ].filter(Boolean);
     relatedQuery = relatedQuery.or(filters.join(","));
     const relatedResult = await relatedQuery;
+    logProductQueryError("related products", relatedResult.error);
     if (!relatedResult.error) {
       relatedProducts = ((relatedResult.data ?? []) as unknown as RelatedRow[])
         .flatMap((related) => {

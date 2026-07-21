@@ -24,8 +24,7 @@ export async function HomepageCatalog() {
   const data = await getHomepageData();
   return (
     <>
-      {data.hasError ? <div className="rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] px-4 py-3 text-sm text-[#92400E]" role="status">Some live catalog sections could not be loaded. Available sections are shown below.</div> : null}
-      <ProductSection description="Products shoppers are comparing across trusted stores." emptyMessage="Trending products will appear when published products are marked as trending." href="/search?sort=popular" products={data.trendingProducts} title="Trending Products" />
+      <ProductSection description="Products shoppers are comparing across trusted stores." emptyMessage="Trending products will appear when published products are marked as trending." href="/trending" products={data.trendingProducts} title="Trending Products" />
       <ProductSection description="Handpicked products selected by the HypeBuzz team." emptyMessage="Featured products will appear when published products are marked as featured." href="/search" products={data.featuredProducts} title="Featured Products" />
       <ProductSection description="The newest published additions to the HypeBuzz catalog." emptyMessage="Latest products will appear after products are published." href="/search?sort=newest" products={data.latestProducts} title="Latest Products" />
       <ProductSection description="Current offers with the strongest verified percentage savings." emptyMessage="Best deals will appear when active offers include a valid original price and discount." href="/search?sort=discount" products={data.bestDeals} title="Best Deals" />
