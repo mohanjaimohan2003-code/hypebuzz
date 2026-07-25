@@ -13,7 +13,7 @@ export default async function EditProductPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const { product, categories, hasError } = await getAdminProductEditorData(productId);
+  const { product, categories, merchants, offer, images, hasError } = await getAdminProductEditorData(productId);
 
   if (!product && !hasError) notFound();
 
@@ -47,6 +47,7 @@ export default async function EditProductPage({
 
       <ProductForm
         categories={categories}
+        merchants={merchants}
         mode="edit"
         product={{
           id: product.id,
@@ -55,9 +56,18 @@ export default async function EditProductPage({
           shortDescription: product.short_description ?? "",
           categoryId: product.category_id ?? "",
           imageUrl: product.primary_image_url ?? "",
+          images,
           isFeatured: product.is_featured,
           isTrending: product.is_trending,
           status: product.status,
+          offerId: offer?.id ?? null,
+          merchantId: offer?.merchant_id ?? "",
+          affiliateUrl: offer?.affiliate_url ?? "",
+          currentPrice: offer ? Number(offer.current_price) : null,
+          originalPrice: offer?.original_price === null || offer?.original_price === undefined ? null : Number(offer.original_price),
+          currency: offer?.currency ?? "INR",
+          stockStatus: offer?.availability === "limited_stock" || offer?.availability === "out_of_stock" ? offer.availability : "in_stock",
+          offerIsActive: offer?.is_active ?? true,
         }}
       />
     </div>

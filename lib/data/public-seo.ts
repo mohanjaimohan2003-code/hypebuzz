@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export type SitemapProduct = { slug: string; updatedAt: string };
 export type SitemapCategory = { slug: string; updatedAt: string };
+export type SitemapGuide = { slug: string; updatedAt: string };
 type SitemapProductRow = { slug: string; updated_at: string };
 
 export async function getPublishedProductsForSitemap(): Promise<SitemapProduct[]> {
@@ -17,6 +18,11 @@ export async function getPublishedProductsForSitemap(): Promise<SitemapProduct[]
 
   if (error) return [];
   return (data ?? []).map((product) => ({ slug: product.slug, updatedAt: product.updated_at }));
+}
+
+export async function getPublishedGuidesForSitemap(): Promise<SitemapGuide[]> {
+  const supabase = await createClient(); const { data, error } = await supabase.from("knowledge_hub_items").select("slug, updated_at").eq("status", "published").order("updated_at", { ascending: false }).returns<SitemapProductRow[]>();
+  if (error) return []; return (data ?? []).map((guide) => ({ slug: guide.slug, updatedAt: guide.updated_at }));
 }
 
 export async function getActiveCategoriesForSitemap(): Promise<SitemapCategory[]> {

@@ -20,13 +20,13 @@ export const metadata: Metadata = {
     description: siteDescription,
     url: absoluteUrl("/"),
     siteName: "HypeBuzz",
-    images: [{ url: absoluteUrl("/brand/hypebuzz-banner.png"), alt: "HypeBuzz product discovery and price comparison platform" }],
+    images: [{ url: absoluteUrl("/brand/hypebuzz-banner-v3.png"), alt: "HypeBuzz product discovery and price comparison platform" }],
   },
   twitter: {
     card: "summary_large_image",
     title: siteTitle,
     description: siteDescription,
-    images: [absoluteUrl("/brand/hypebuzz-banner.png")],
+    images: [absoluteUrl("/brand/hypebuzz-banner-v3.png")],
   },
 };
 
@@ -61,13 +61,12 @@ export default function Home() {
     <>
       <HomepageHeader />
       <main className="min-h-screen overflow-x-clip bg-[#F8FAFC]" id="main-content">
-        <section aria-label="HypeBuzz featured deals" className="relative isolate overflow-hidden border-b border-[#172554] bg-[#020817]">
+        <section aria-label="HypeBuzz featured deals" className="relative isolate w-full overflow-hidden border-b border-[#172554] bg-[#020817]">
           <h1 className="sr-only">HypeBuzz — Handpicked Deals. Everyday Savings.</h1>
-          <div aria-hidden="true" className="absolute left-1/2 top-1/2 -z-10 h-72 w-[min(90vw,72rem)] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#2563EB]/20 blur-3xl" />
-          <div aria-hidden="true" className="absolute -left-24 top-8 -z-10 h-48 w-48 rotate-12 rounded-[2rem] border border-[#2563EB]/20" />
-          <div aria-hidden="true" className="absolute -right-16 bottom-0 -z-10 h-44 w-44 rotate-45 rounded-[2rem] border border-[#60A5FA]/15" />
-          <Link aria-label="Explore HypeBuzz deals" className="relative mx-auto block h-[250px] w-full max-w-[1717px] overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#60A5FA] sm:h-[270px] md:h-[300px] lg:h-[360px]" href="/deals">
-            <Image alt="HypeBuzz handpicked deals and everyday savings promotion" className="object-contain object-center" fill priority sizes="100vw" src="/brand/hypebuzz-banner.png" />
+          <div aria-hidden="true" className="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: "url('/images/banners/hypebuzz-hero-background.png')" }} />
+          <div aria-hidden="true" className="absolute inset-0 -z-10 bg-black/10" />
+          <Link aria-label="Explore HypeBuzz deals" className="relative mx-auto flex h-[250px] w-full max-w-[1717px] items-center justify-center overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#60A5FA] sm:h-[270px] md:h-[300px] lg:h-[360px]" href="/search?sort=discount">
+            <Image alt="HypeBuzz handpicked deals and everyday savings" className="block h-auto max-h-full w-auto max-w-full object-contain" height={916} priority sizes="(max-width: 1717px) 100vw, 1717px" src="/images/banners/hypebuzz-main-hero-banner.png" width={1717} />
           </Link>
         </section>
 

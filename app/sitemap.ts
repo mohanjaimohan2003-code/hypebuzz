@@ -1,11 +1,12 @@
 import type { MetadataRoute } from "next";
-import { getActiveCategoriesForSitemap, getPublishedProductsForSitemap } from "@/lib/data/public-seo";
+import { getActiveCategoriesForSitemap, getPublishedGuidesForSitemap, getPublishedProductsForSitemap } from "@/lib/data/public-seo";
 import { absoluteUrl } from "@/lib/seo/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [categories, products] = await Promise.all([
+  const [categories, products, guides] = await Promise.all([
     getActiveCategoriesForSitemap(),
     getPublishedProductsForSitemap(),
+    getPublishedGuidesForSitemap(),
   ]);
   return [
     { url: absoluteUrl("/"), changeFrequency: "daily", priority: 1 },
@@ -35,5 +36,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "daily" as const,
       priority: 0.9,
     })),
+    ...guides.map((guide) => ({ url: absoluteUrl(`/knowledge-hub/${guide.slug}`), lastModified: new Date(guide.updatedAt), changeFrequency: "monthly" as const, priority: 0.7 })),
   ];
 }

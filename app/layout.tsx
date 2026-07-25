@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     url: absoluteUrl("/"),
     images: [
       {
-        url: absoluteUrl("/brand/hypebuzz-banner.png"),
+        url: absoluteUrl("/brand/hypebuzz-banner-v3.png"),
         alt: "HypeBuzz product discovery and price comparison platform",
       },
     ],
@@ -54,7 +54,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteTitle,
     description: siteDescription,
-    images: [absoluteUrl("/brand/hypebuzz-banner.png")],
+    images: [absoluteUrl("/brand/hypebuzz-banner-v3.png")],
   },
 };
 

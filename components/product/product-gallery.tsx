@@ -1,20 +1,8 @@
+"use client";
+/* eslint-disable @next/next/no-img-element -- external catalog hosts remain administrator-configurable. */
 import Image from "next/image";
-
-const fallbackImage = "/products/aurora-headphones.svg";
-
-export function ProductGallery({ imageUrl, productName }: { imageUrl: string | null; productName: string }) {
-  const src = imageUrl ?? fallbackImage;
-  return (
-    <section aria-label={`${productName} gallery`} className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">
-      <div className="relative aspect-square">
-        {src.startsWith("/") ? (
-          <Image alt={productName} className="object-contain p-8 sm:p-12" fill priority sizes="(max-width: 1023px) 100vw, 50vw" src={src} />
-        ) : (
-          // The admin-controlled catalog accepts multiple future media hosts.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img alt={productName} className="h-full w-full object-contain p-8 sm:p-12" fetchPriority="high" src={src} />
-        )}
-      </div>
-    </section>
-  );
-}
+import { useState } from "react";
+const fallbackImage="/products/aurora-headphones.svg";
+type GalleryImage={id:string;imageUrl:string;altText:string|null};
+function ProductImage({src,alt,priority=false}:{src:string;alt:string;priority?:boolean}){return src.startsWith("/")?<Image alt={alt} className="object-contain p-8 sm:p-12" fill priority={priority} sizes="(max-width: 1023px) 100vw, 50vw" src={src}/>:<img alt={alt} className="h-full w-full object-contain p-8 sm:p-12" fetchPriority={priority?"high":undefined} onError={event=>{event.currentTarget.onerror=null;event.currentTarget.src=fallbackImage;}} src={src}/>;}
+export function ProductGallery({imageUrl,images,productName}:{imageUrl:string|null;images:GalleryImage[];productName:string}){const gallery=images.length?images:imageUrl?[{id:"primary",imageUrl,altText:productName}]:[{id:"fallback",imageUrl:fallbackImage,altText:productName}];const [selected,setSelected]=useState(0);const current=gallery[selected]??gallery[0];return <section aria-label={`${productName} gallery`}><div className="relative aspect-square overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white"><ProductImage alt={current.altText||`${productName} product image ${selected+1}`} priority src={current.imageUrl}/></div>{gallery.length>1?<div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-5">{gallery.map((image,index)=><button aria-label={`View ${productName} image ${index+1}`} className={`relative aspect-square overflow-hidden rounded-[10px] border bg-white ${selected===index?"border-[#2563EB] ring-2 ring-[#BFDBFE]":"border-[#E5E7EB]"}`} key={image.id} onClick={()=>setSelected(index)} type="button"><ProductImage alt="" src={image.imageUrl}/></button>)}</div>:null}</section>;}

@@ -1,31 +1,10 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/layout/footer";
 import { HomepageHeader } from "@/components/layout/homepage-header";
+import { GuideCard } from "@/components/knowledge-hub/guide-card";
+import { getPublishedGuides } from "@/lib/data/knowledge-hub";
 import { absoluteUrl } from "@/lib/seo/site";
-
-const title = "Knowledge Hub";
-const description = "Explore upcoming buying guides, product insights, and smarter shopping advice from HypeBuzz.";
-
-export const metadata: Metadata = {
-  title,
-  description,
-  alternates: { canonical: absoluteUrl("/knowledge-hub") },
-  openGraph: { type: "website", locale: "en_US", siteName: "HypeBuzz", title: `${title} | HypeBuzz`, description, url: absoluteUrl("/knowledge-hub") },
-  twitter: { card: "summary_large_image", title: `${title} | HypeBuzz`, description, images: [absoluteUrl("/brand/hypebuzz-banner.png")] },
-};
-
-export default function KnowledgeHubPage() {
-  return (
-    <>
-      <HomepageHeader />
-      <main className="flex min-h-[65vh] items-center bg-[#F8FAFC] px-4 py-16" id="main-content">
-        <section className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#2563EB]">Coming soon</p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-[#111827] sm:text-5xl">Knowledge Hub</h1>
-          <p className="mx-auto mt-5 max-w-xl text-lg leading-8 text-[#6B7280]">Buying guides, product insights, and smarter shopping advice are coming soon.</p>
-        </section>
-      </main>
-      <Footer />
-    </>
-  );
-}
+import { KNOWLEDGE_HUB_CATEGORIES } from "@/lib/validation/knowledge-hub";
+const title = "Knowledge Hub"; const description = "Download practical HypeBuzz buying guides, comparisons, and product advice.";
+export const metadata: Metadata = { title, description, alternates: { canonical: absoluteUrl("/knowledge-hub") }, openGraph: { type: "website", title, description, url: absoluteUrl("/knowledge-hub"), images: [absoluteUrl("/brand/hypebuzz-banner-v3.png")] } };
+export default async function Page({ searchParams }: { searchParams: Promise<{ q?: string; category?: string }> }) { const p = await searchParams; const { guides, hasError } = await getPublishedGuides(p.q, p.category); return <><HomepageHeader/><main className="min-h-[65vh] bg-[#F8FAFC] px-4 py-12 sm:py-16" id="main-content"><div className="mx-auto max-w-7xl"><header className="max-w-3xl"><p className="text-sm font-bold uppercase tracking-wider text-[#2563EB]">Free PDF guides</p><h1 className="mt-3 text-4xl font-bold tracking-tight text-[#111827] sm:text-5xl">Knowledge Hub</h1><p className="mt-4 text-lg leading-8 text-[#6B7280]">Practical buying guides and comparisons to help you choose products with confidence.</p></header><form className="mt-8 grid gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4 sm:grid-cols-[1fr_15rem_auto]"><input aria-label="Search guides" className="min-h-12 rounded-[10px] border border-[#D1D5DB] px-4" defaultValue={p.q} name="q" placeholder="Search guides"/><select aria-label="Filter by category" className="min-h-12 rounded-[10px] border border-[#D1D5DB] px-4" defaultValue={p.category} name="category"><option value="">All categories</option>{KNOWLEDGE_HUB_CATEGORIES.map(x => <option key={x}>{x}</option>)}</select><button className="min-h-12 rounded-[10px] bg-[#111827] px-6 font-semibold text-white">Search</button></form>{hasError ? <p className="mt-8 rounded-xl bg-[#FEF2F2] p-4 text-[#991B1B]" role="alert">Guides are temporarily unavailable. Please try again later.</p> : guides.length ? <section aria-label="Published guides" className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{guides.map(g => <GuideCard guide={g} key={g.id}/>)}</section> : <section className="mt-8 rounded-2xl border border-[#E5E7EB] bg-white p-10 text-center"><h2 className="text-xl font-bold">No guides found</h2><p className="mt-2 text-[#6B7280]">Try a different search or category.</p></section>}</div></main><Footer/></>; }

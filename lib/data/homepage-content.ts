@@ -12,10 +12,10 @@ export type HomeFeature = {
 
 export const homeFeatures = [
   {
-    title: "Deal of the Day",
+    title: "Hot Deals",
     description: "Best offer handpicked by HypeBuzz",
     actionLabel: "Shop Now",
-    href: "/deals",
+    href: "/search?sort=discount",
     icon: "flame",
     accent: "orange",
   },
@@ -23,14 +23,14 @@ export const homeFeatures = [
     title: "Biggest Price Drop",
     description: "Products with the biggest price reductions",
     actionLabel: "Explore Now",
-    href: "/deals?sort=price-drop",
+    href: "/search?sort=discount",
     icon: "trending-down",
     accent: "green",
   },
   {
-    title: "Trending Search",
-    description: "What shoppers are searching for today",
-    actionLabel: "See Trends",
+    title: "Trending Products",
+    description: "Products shoppers are exploring today",
+    actionLabel: "View Trending",
     href: "/trending",
     icon: "search",
     accent: "purple",

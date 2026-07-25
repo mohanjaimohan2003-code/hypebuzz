@@ -19,7 +19,14 @@ function authorizationError(): OfferActionState {
   };
 }
 
-function databaseError(error: { code?: string } | null): OfferActionState {
+function databaseError(error: { code?: string; message?: string; details?: string; hint?: string } | null): OfferActionState {
+  console.error("Supabase offer save failed", {
+    code: error?.code ?? "unknown",
+    message: error?.message ?? "Unknown database error",
+    details: error?.details ?? "not reported",
+    hint: error?.hint ?? "not reported",
+    table: "product_offers",
+  });
   if (error?.code === "23505") {
     return {
       status: "error",
@@ -36,6 +43,18 @@ function databaseError(error: { code?: string } | null): OfferActionState {
       message: "The selected product or merchant is no longer available.",
       fieldErrors: {},
     };
+  }
+
+  if (error?.code === "23502") {
+    return { status: "error", message: "A required offer value is missing.", fieldErrors: {} };
+  }
+
+  if (error?.code === "22P02") {
+    return { status: "error", message: "An offer value has an invalid database format.", fieldErrors: {} };
+  }
+
+  if (error?.code === "42501") {
+    return { status: "error", message: "Your database grants or admin RLS policies do not allow this offer change.", fieldErrors: {} };
   }
 
   return {
@@ -57,6 +76,10 @@ function offerPayload(values: OfferFormValues) {
     coupon_note: values.notes || null,
     is_active: values.isActive,
   };
+}
+
+function offerCreatePayload(values: OfferFormValues) {
+  return { ...offerPayload(values), last_checked_at: null };
 }
 
 function revalidateOfferRoutes() {
@@ -112,7 +135,7 @@ export async function createOffer(
   const supabase = await createClient();
   const { error } = await supabase
     .from("product_offers")
-    .insert(offerPayload(validation.data));
+    .insert(offerCreatePayload(validation.data));
   if (error) return databaseError(error);
 
   revalidateOfferRoutes();

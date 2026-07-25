@@ -13,20 +13,35 @@
 
 ## Run migrations
 
-Run each migration once, in filename order:
+Run every migration once, in filename order. Existing projects must apply all
+files they have not yet run; do not skip directly to the latest filename:
 
 1. Open the correct project in the Supabase Dashboard.
 2. Open **SQL Editor** and select **New query**.
-3. Paste and run the full contents of `001_initial_schema.sql`.
-4. In a new query, paste and run the full contents of `002_admin_users.sql`.
-5. In a new query, paste and run the full contents of `003_admin_catalog_read_policies.sql`.
-6. Verify all tables exist and have RLS enabled under **Database > Tables**.
+3. Run `001_initial_schema.sql` through `016_atomic_product_publication.sql` in
+   numeric order, using a new query for each file.
+4. Verify all tables exist and have RLS enabled under **Database > Tables**.
 
-The third migration adds only `SELECT` policies for authenticated users with an
-active `admin_users` record. It does not grant insert, update, or delete access,
-and it does not change the existing public read policies.
+Migration 016 restores explicit read/write grants without weakening RLS, adds
+the atomic product-and-offer save function, and enforces the storefront-ready
+publication contract. Legacy published rows without an eligible offer are
+moved back to draft so they cannot leak into a partially renderable catalog.
 
 Never run migrations from browser code or add a service-role key to this app.
+
+## Required environment variables
+
+Set these variables locally and in Vercel for Production, Preview, and
+Development:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+
+Catalog Server Actions use the signed-in user's cookie-authenticated Supabase
+client. PostgreSQL grants and RLS require an active `admin_users` row. A
+`SUPABASE_SECRET_KEY` is not required for catalog writes. If one is introduced
+for a separate server-only operation, never prefix it with `NEXT_PUBLIC_`, put
+it in a client component, log it, or commit it.
 
 ## Create the first admin user
 

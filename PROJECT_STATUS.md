@@ -13,10 +13,10 @@ The core catalog, administration, affiliate, and public discovery experience is 
 | Phase | Progress | Status | Remaining work |
 | --- | ---: | --- | --- |
 | 1. Foundation, design system, and data model | 100% | Complete | None identified |
-| 2. Admin and catalog operations | 94% | Nearly complete | Apply and verify the publication-safety migration; complete authenticated workflow QA |
+| 2. Admin and catalog operations | 94% | Blocked on database access | Apply and verify the publication-safety migration; complete authenticated workflow QA |
 | 3. Public discovery and comparison | 88% | In progress | Add result pagination and finish trending SEO/discovery integration |
 | 4. Content, trust, and affiliate operations | 90% | Nearly complete | Verify blog publishing end to end and finish footer polish |
-| 5. Production hardening and launch | 66% | In progress | Resolve the remaining launch blocker; add error boundaries, browser QA, security headers, monitoring, and critical tests |
+| 5. Production hardening and launch | 66% | Blocked on database access | Resolve the remaining launch blocker; add error boundaries, browser QA, security headers, monitoring, and critical tests |
 | 6. Automation and retention | 8% | Planned | Amazon integrations, imports, synchronization, user accounts, wishlist, and comparison persistence |
 
 ## Completed and Verified
@@ -88,7 +88,7 @@ The core catalog, administration, affiliate, and public discovery experience is 
 
 - Product and offer CRUD are implemented.
 - Migration `016_atomic_product_publication.sql` enforces an active category and eligible active offer for published products.
-- The current data still exposes at least one published product without an active offer, so the migration and catalog cleanup have not been verified in the deployed database.
+- The migration implementation and legacy-row cleanup are present in the repository, but they have not been applied or verified against the deployed database. This workspace has no linked Supabase configuration, database connection credential, or authenticated Supabase CLI access token.
 
 ### Category pages — 85%
 
@@ -142,7 +142,7 @@ The core catalog, administration, affiliate, and public discovery experience is 
 
 ## Current Focus
 
-1. Apply the atomic publication migration and clean every published product that lacks an eligible active affiliate offer.
+1. Authenticate or link the Supabase CLI, apply the atomic publication migration, and verify that every remaining published product has an eligible active affiliate offer.
 2. Add custom 404 and application error recovery, then complete console, hydration, keyboard, and authenticated admin browser QA.
 3. Move search/category filtering to the existing database functions and add accurate pagination.
 4. Finish Trending Products SEO and sitemap integration and remove the inaccurate popular-sort behavior.
@@ -150,7 +150,7 @@ The core catalog, administration, affiliate, and public discovery experience is 
 
 ## Launch Blockers
 
-- The public catalog currently contains at least one published product without an eligible active affiliate offer; migration 016 and the required data cleanup must be applied and verified before launch.
+- The public catalog currently contains at least one published product without an eligible active affiliate offer. Migration 016 includes the enforcement and cleanup, but production application is blocked because this workspace has no authenticated Supabase CLI access or privileged database connection. Apply the migration and verify the resulting catalog before launch.
 
 ## Explicitly Not Complete
 
@@ -168,4 +168,5 @@ The core catalog, administration, affiliate, and public discovery experience is 
 - No automated application test suite is currently present.
 - Authenticated admin CRUD was verified structurally in the repository but still requires a staging browser pass with administrator credentials.
 - Browser console and hydration checks require a browser-enabled staging QA session.
+- Supabase CLI 2.109.1 is available, but production migration verification is blocked until `supabase login` is completed or `SUPABASE_ACCESS_TOKEN` and the intended project link are provided.
 - Progress percentages represent repository implementation completeness, not elapsed schedule time.

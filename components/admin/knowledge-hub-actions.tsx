@@ -1,0 +1,5 @@
+"use client";
+import { useTransition } from "react";
+import { deleteGuide, setGuideStatus } from "@/app/admin/(protected)/knowledge-hub/actions";
+import type { KnowledgeHubStatus } from "@/lib/types/database";
+export function KnowledgeHubActions({ id, title, status }: { id: string; title: string; status: KnowledgeHubStatus }) { const [pending, start] = useTransition(); const next = status === "published" ? "draft" : "published"; return <div className="flex flex-wrap gap-2"><button className="min-h-10 rounded-[10px] border border-[#D1D5DB] px-3 text-sm font-semibold disabled:opacity-50" disabled={pending} onClick={() => start(() => setGuideStatus(id, next))} type="button">{status === "published" ? "Unpublish" : "Publish"}</button><button className="min-h-10 rounded-[10px] border border-[#FCA5A5] px-3 text-sm font-semibold text-[#B91C1C] disabled:opacity-50" disabled={pending} onClick={() => { if (window.confirm(`Delete “${title}” and its stored files? This cannot be undone.`)) start(() => deleteGuide(id)); }} type="button">Delete</button></div>; }

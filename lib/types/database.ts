@@ -8,6 +8,15 @@ export type Json =
 
 export type ProductStatus = "draft" | "published" | "archived";
 export type BlogPostStatus = "draft" | "published" | "archived";
+export type KnowledgeHubStatus = "draft" | "published";
+
+export type KnowledgeHubItem = {
+  id: string; title: string; slug: string; description: string; category: string;
+  tags: string[]; author_name: string | null; pdf_url: string; pdf_storage_path: string;
+  thumbnail_url: string | null; thumbnail_storage_path: string | null; pdf_size_bytes: number;
+  status: KnowledgeHubStatus; published_at: string | null; created_at: string; updated_at: string;
+};
+export type ProductImage = { id: string; product_id: string; image_url: string; storage_path: string | null; source_type: "upload" | "external"; alt_text: string | null; sort_order: number; is_primary: boolean; created_at: string };
 
 export type BlogCategory = {
   id: string; name: string; slug: string; description: string | null;
@@ -174,68 +183,30 @@ export type Database = {
         BlogPostTag,
         Partial<BlogPostTag>
       >;
+      knowledge_hub_items: TableDefinition<KnowledgeHubItem, InsertShape<KnowledgeHubItem>, UpdateShape<KnowledgeHubItem>>;
+      product_images: TableDefinition<ProductImage, Omit<ProductImage, "created_at"> & { created_at?: string }, Partial<Omit<ProductImage, "id" | "product_id" | "created_at">>>;
     };
     Views: Record<string, never>;
     Functions: {
-      search_products: {
+      save_product_with_offer: {
         Args: {
-          p_query?: string | null;
-          p_category_slug?: string | null;
-          p_brand_slug?: string | null;
-          p_merchant_slug?: string | null;
-          p_min_price?: number | null;
-          p_max_price?: number | null;
-          p_min_discount?: number | null;
-          p_availability?: string | null;
-          p_best_price_only?: boolean;
-          p_sort?: string;
-          p_limit?: number;
+          p_product_id: string | null; p_name: string; p_slug: string;
+          p_short_description: string | null; p_category_id: string;
+          p_primary_image_url: string | null; p_is_featured: boolean;
+          p_is_trending: boolean; p_status: "draft" | "published";
+          p_offer_id: string | null; p_merchant_id: string | null;
+          p_affiliate_url: string | null; p_current_price: number | null;
+          p_original_price: number | null; p_currency: string | null;
+          p_availability: string | null; p_offer_is_active: boolean | null;
         };
-        Returns: Array<{
-          id: string;
-          name: string;
-          slug: string;
-          primary_image_url: string | null;
-          brand_name: string | null;
-          best_price: number;
-          currency: string;
-          store_count: number;
-          biggest_discount: number | null;
-        }>;
-      };
-      search_category_products: {
-        Args: {
-          p_category_slug: string;
-          p_query?: string | null;
-          p_brand_slug?: string | null;
-          p_merchant_slug?: string | null;
-          p_min_price?: number | null;
-          p_max_price?: number | null;
-          p_min_discount?: number | null;
-          p_availability?: string | null;
-          p_best_price_only?: boolean;
-          p_featured?: boolean;
-          p_trending?: boolean;
-          p_sort?: string;
-          p_limit?: number;
-        };
-        Returns: Array<{
-          id: string;
-          name: string;
-          slug: string;
-          primary_image_url: string | null;
-          brand_name: string | null;
-          best_price: number;
-          currency: string;
-          store_count: number;
-          biggest_discount: number | null;
-          total_count: number;
-        }>;
+        Returns: string;
       };
       get_affiliate_click_summary: {
         Args: Record<string, never>;
         Returns: Json;
       };
+      delete_failed_product: { Args: { p_product_id: string }; Returns: undefined };
+      replace_product_images: { Args: { p_product_id: string; p_images: Json }; Returns: undefined };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

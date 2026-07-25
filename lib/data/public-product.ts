@@ -24,6 +24,7 @@ export type PublicProductDetail = {
   shortDescription: string | null;
   description: string | null;
   imageUrl: string | null;
+  images: Array<{ id: string; imageUrl: string; altText: string | null }>;
   specifications: Array<{ name: string; value: string }>;
   features: string[];
   brand: { name: string; slug: string } | null;
@@ -121,6 +122,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
   logProductQueryError("product", error);
   if (error || !data) return null;
   const product = data as unknown as ProductRow;
+  const imageResult = await supabase.from("product_images").select("id, image_url, alt_text, is_primary, sort_order").eq("product_id",product.id).order("is_primary",{ascending:false}).order("sort_order").returns<Array<{id:string;image_url:string;alt_text:string|null;is_primary:boolean;sort_order:number}>>();
   const validOffers = product.product_offers.filter((offer) => offer.merchant);
   const lowestPrice = validOffers.length
     ? Math.min(...validOffers.map((offer) => Number(offer.current_price)))
@@ -197,6 +199,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     shortDescription: product.short_description,
     description: product.description,
     imageUrl: product.primary_image_url,
+    images: imageResult.error ? (product.primary_image_url ? [{id:"primary",imageUrl:product.primary_image_url,altText:product.name}]:[]) : (imageResult.data??[]).map(image=>({id:image.id,imageUrl:image.image_url,altText:image.alt_text})),
     specifications: content.specifications,
     features: content.features,
     brand: product.brand,

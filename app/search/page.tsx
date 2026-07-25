@@ -32,13 +32,13 @@ export async function generateMetadata({ searchParams }: PageProps<"/search">): 
       description,
       url: canonical,
       siteName: "HypeBuzz",
-      images: [{ url: absoluteUrl("/brand/hypebuzz-banner.png"), alt: "Search and compare products on HypeBuzz" }],
+      images: [{ url: absoluteUrl("/brand/hypebuzz-banner-v3.png"), alt: "Search and compare products on HypeBuzz" }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [absoluteUrl("/brand/hypebuzz-banner.png")],
+      images: [absoluteUrl("/brand/hypebuzz-banner-v3.png")],
     },
   };
 }

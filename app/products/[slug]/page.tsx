@@ -113,7 +113,7 @@ export default async function ProductPage({ params }: PageProps<"/products/[slug
           </nav>
 
           <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)] lg:items-start">
-            <ProductGallery imageUrl={product.imageUrl} productName={product.name} />
+            <ProductGallery imageUrl={product.imageUrl} images={product.images} productName={product.name} />
             <section aria-labelledby="product-title" className="lg:sticky lg:top-24">
               <div className="flex flex-wrap gap-2 text-sm font-medium text-[#1D4ED8]">
                 {product.brand ? <Link className="rounded-full bg-[#EFF6FF] px-3 py-1 hover:underline" href={`/search?brand=${product.brand.slug}`}>{product.brand.name}</Link> : null}
