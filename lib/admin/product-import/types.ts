@@ -55,7 +55,9 @@ export type ProductImportApplication = {
   seoTitle?: string;
   seoDescription?: string;
   categoryId?: string;
+  subcategory?: string;
   brandId?: string;
+  brandName?: string;
   status: "draft" | "published";
   featuredProduct?: boolean;
   trendingProduct?: boolean;
@@ -76,4 +78,6 @@ export type ProductImportPreview = {
   product: NormalizedImportedProduct;
   warnings: ImportWarning[];
   importedFields: string[];
+  categoryMessage?: string;
+  categorySuggestion?: ImportReference;
 };

@@ -4,6 +4,10 @@ export function normalizeReferenceName(value: string) {
   return value.trim().toLowerCase().replace(/[-\s]+/g, " ");
 }
 
+export function cleanImportedReferenceDisplayName(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
 export function matchImportReference(
   value: string,
   records: ImportReference[],

@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import type { Json, ProductImage } from "@/lib/types/database";
 import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/offers/publication-contract";
 import { richFieldsDatabasePayload } from "@/lib/products/rich-fields";
+import { cleanImportedReferenceDisplayName, normalizeReferenceName } from "@/lib/admin/product-import/match-record";
+import { createBrandSlug } from "@/lib/validation/brand";
 import {
   isUuid,
   validateProductForm,
@@ -149,6 +151,53 @@ function revalidateProductRoutes() {
 async function isAuthorizedAdmin() {
   const access = await getAdminAccess();
   return access.status === "authenticated";
+}
+
+type ImportedBrandReference = { id: string; name: string; slug: string; isActive: boolean };
+export type ImportedBrandResolution =
+  | { status: "selected" | "created"; brand: ImportedBrandReference; message: string }
+  | { status: "selection_required"; brands: ImportedBrandReference[]; message: string }
+  | { status: "error"; message: string };
+
+function cleanImportedBrandName(value: string) {
+  return cleanImportedReferenceDisplayName(value).slice(0, 120);
+}
+
+export async function resolveOrCreateImportedBrand(rawName: string): Promise<ImportedBrandResolution> {
+  if (!(await isAuthorizedAdmin())) return { status: "error", message: "Your admin session is not authorized to create brands." };
+  const name = cleanImportedBrandName(rawName);
+  const slug = createBrandSlug(name);
+  if (name.length < 2 || !slug) return { status: "error", message: "The imported brand name is not valid." };
+
+  const supabase = await createClient();
+  async function findMatches() {
+    const result = await supabase.from("brands").select("id, name, slug, is_active").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>();
+    if (result.error) return { error: result.error, matches: [] as ImportedBrandReference[] };
+    const normalized = normalizeReferenceName(name);
+    const matches = (result.data ?? []).filter((brand) => brand.slug.toLowerCase() === slug
+      || brand.name.toLowerCase() === name.toLowerCase()
+      || normalizeReferenceName(brand.name) === normalized)
+      .map((brand) => ({ id: brand.id, name: brand.name, slug: brand.slug, isActive: brand.is_active }));
+    return { error: null, matches: [...new Map(matches.map((brand) => [brand.id, brand])).values()] };
+  }
+
+  const existing = await findMatches();
+  if (existing.error) return { status: "error", message: operationErrorMessage("find imported brand", existing.error, "Brands could not be checked before import.") };
+  if (existing.matches.length === 1) return { status: "selected", brand: existing.matches[0], message: `Brand '${existing.matches[0].name}' was selected.` };
+  if (existing.matches.length > 1) return { status: "selection_required", brands: existing.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
+
+  const inserted = await supabase.from("brands").insert({ name, slug, is_active: true, description: null, logo_url: null, website_url: null })
+    .select("id, name, slug, is_active").single<{ id: string; name: string; slug: string; is_active: boolean }>();
+  if (!inserted.error && inserted.data) {
+    revalidatePath("/admin/brands", "layout");
+    return { status: "created", brand: { id: inserted.data.id, name: inserted.data.name, slug: inserted.data.slug, isActive: inserted.data.is_active }, message: `Brand '${inserted.data.name}' was created and selected. You can add its logo later.` };
+  }
+  if (inserted.error?.code === "23505") {
+    const concurrent = await findMatches();
+    if (!concurrent.error && concurrent.matches.length === 1) return { status: "selected", brand: concurrent.matches[0], message: `Brand '${concurrent.matches[0].name}' was selected.` };
+    if (!concurrent.error && concurrent.matches.length > 1) return { status: "selection_required", brands: concurrent.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
+  }
+  return { status: "error", message: operationErrorMessage("create imported brand", inserted.error, "The imported brand could not be created.") };
 }
 
 async function categoryExists(categoryId: string): Promise<{

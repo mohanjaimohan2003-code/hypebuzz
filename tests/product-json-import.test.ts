@@ -5,8 +5,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ProductJsonImporter } from "../components/admin/product-json-importer";
 import { prepareProductImport } from "../lib/admin/product-import/apply-import";
 import { productImportExample } from "../lib/admin/product-import/example";
-import { matchImportReference } from "../lib/admin/product-import/match-record";
+import { cleanImportedReferenceDisplayName, matchImportReference } from "../lib/admin/product-import/match-record";
 import { parseProductImportJson } from "../lib/admin/product-import/schema";
+import { matchImportedCategory } from "../lib/catalog/category-mapping";
 
 const references = {
   categories: [{ id: "category-1", name: "Sports Shoes", slug: "sports-shoes", isActive: true }],
@@ -44,20 +45,43 @@ test("invalid JSON syntax returns a specific error", () => {
   assert.deepEqual(result, { success: false, error: "Invalid JSON. Check commas, quotation marks and brackets." });
 });
 
-test("unknown category, brand, and merchant remain unselected with warnings", () => {
+test("unknown category and merchant remain unselected while a missing brand is queued for server resolution", () => {
   const preview = prepareProductImport(parse({ category: "Unknown category", brand: "Unknown brand", merchant: "Unknown merchant" }), references);
   assert.equal(preview.application.categoryId, "");
   assert.equal(preview.application.brandId, "");
+  assert.equal(preview.application.brandName, "Unknown brand");
   assert.equal(preview.application.offer?.merchantId, "");
   assert.ok(preview.warnings.some((warning) => warning.message.includes("Category 'Unknown category' was not found")));
-  assert.ok(preview.warnings.some((warning) => warning.message.includes("Brand 'Unknown brand' was not found")));
   assert.ok(preview.warnings.some((warning) => warning.message.includes("Merchant 'Unknown merchant' was not found")));
+});
+
+test("category aliases map only to active parent categories that actually exist", () => {
+  const categories = [
+    { id: "sports", name: "Sports", slug: "sports", isActive: true },
+    { id: "mobiles", name: "Mobiles", slug: "mobiles", isActive: true },
+    { id: "audio", name: "Audio", slug: "audio", isActive: true },
+  ];
+  assert.equal(matchImportedCategory("Sports Shoes", categories).id, "sports");
+  assert.equal(matchImportedCategory("Running Shoes", categories).id, "sports");
+  assert.equal(matchImportedCategory("Smartphones", categories).id, "mobiles");
+  assert.equal(matchImportedCategory("Earbuds", categories).id, "audio");
+});
+
+test("unknown category never defaults to Mobiles", () => {
+  const result = matchImportedCategory("Industrial generators", [{ id: "mobiles", name: "Mobiles", slug: "mobiles", isActive: true }]);
+  assert.equal(result.id, undefined);
 });
 
 test("reference matching follows slug, case-insensitive name, and normalized name", () => {
   assert.equal(matchImportReference("sports-shoes", references.categories, "Category").id, "category-1");
   assert.equal(matchImportReference("SPORTS SHOES", references.categories, "Category").id, "category-1");
   assert.equal(matchImportReference(" sports   shoes ", references.categories, "Category").id, "category-1");
+});
+
+test("brand display names are cleaned without changing capitalization", () => {
+  assert.equal(cleanImportedReferenceDisplayName("  ASIAN   Footwear  "), "ASIAN Footwear");
+  assert.equal(matchImportReference("asian", references.brands, "Brand").id, "brand-1");
+  assert.equal(matchImportReference("AsIaN", references.brands, "Brand").id, "brand-1");
 });
 
 test("numeric and formatted rupee prices normalize safely", () => {
@@ -116,7 +140,7 @@ test("one invalid FAQ entry does not break valid FAQ entries", () => {
 });
 
 test("mobile-friendly importer renders as a collapsed full-width details card", () => {
-  const markup = renderToStaticMarkup(createElement(ProductJsonImporter, { ...references, onApply: () => undefined }));
+  const markup = renderToStaticMarkup(createElement(ProductJsonImporter, { ...references, onApply: () => undefined, onBrandResolved: () => undefined }));
   assert.match(markup, /^<details/);
   assert.doesNotMatch(markup, /<details[^>]* open/);
   assert.match(markup, /w-full/);

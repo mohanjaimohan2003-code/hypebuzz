@@ -1,4 +1,5 @@
 import { matchImportReference } from "./match-record";
+import { matchImportedCategory } from "@/lib/catalog/category-mapping";
 import type { ImportReference, ProductImportApplication, ProductImportPreview, ProductImportParseResult } from "./types";
 
 export function prepareProductImport(
@@ -19,14 +20,17 @@ export function prepareProductImport(
   if (product.featuredProduct !== undefined) application.featuredProduct = product.featuredProduct;
   if (product.trendingProduct !== undefined) application.trendingProduct = product.trendingProduct;
   if (product.category !== undefined) {
-    const match = matchImportReference(product.category, references.categories, "Category");
+    const match = matchImportedCategory(product.category, references.categories);
     application.categoryId = match.id ?? "";
+    application.subcategory = product.subcategory ?? match.subcategory;
     warnings.push(...match.warnings);
+    if (match.message) warnings.push({ field: "category", message: match.message });
   }
   if (product.brand !== undefined) {
     const match = matchImportReference(product.brand, references.brands, "Brand");
     application.brandId = match.id ?? "";
-    warnings.push(...match.warnings);
+    application.brandName = product.brand;
+    if (match.id) warnings.push(...match.warnings);
   }
   const hasOfferField = [product.merchant, product.affiliateUrl, product.currentPrice, product.originalPrice,
     product.currency, product.stockStatus, product.activeOffer, product.offerLabel].some((value) => value !== undefined);
@@ -45,8 +49,9 @@ export function prepareProductImport(
     if (product.activeOffer !== undefined) application.offer.isActive = product.activeOffer;
     if (product.offerLabel !== undefined) application.offer.offerTitle = product.offerLabel;
   }
-  for (const field of ["subcategory", "searchTags", "pros", "considerations", "faq"] as const) {
+  for (const field of ["searchTags", "pros", "considerations", "faq"] as const) {
     if (product[field] !== undefined) warnings.push({ field, message: `${field} was validated but the current Add Product form/database write path does not support this field, so it was not applied.` });
   }
-  return { application, product, warnings, importedFields: parsed.importedFields };
+  const categoryMatch = product.category === undefined ? undefined : matchImportedCategory(product.category, references.categories);
+  return { application, product, warnings, importedFields: parsed.importedFields, categoryMessage: categoryMatch?.message, categorySuggestion: categoryMatch?.suggestion };
 }
