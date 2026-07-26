@@ -15,7 +15,7 @@ import {
   initialProductActionState,
   type ProductField,
 } from "@/lib/validation/product";
-import { ProductImagesField, type ProductImageValue } from "./product-images-field";
+import { ProductImagesField, type ProductImagesFieldHandle, type ProductImageValue } from "./product-images-field";
 import { ProductJsonImporter } from "./product-json-importer";
 import { ProductOffersField, type ProductOffersFieldHandle, type ProductOfferValue } from "./product-offers-field";
 import { ProductHighlightsField } from "./product-highlights-field";
@@ -85,6 +85,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   const richDetailsRef = useRef<HTMLDetailsElement>(null);
   const seoDetailsRef = useRef<HTMLDetailsElement>(null);
   const offersRef = useRef<ProductOffersFieldHandle>(null);
+  const imagesRef = useRef<ProductImagesFieldHandle>(null);
   const action = mode === "create" ? createProduct : updateProduct.bind(null, product?.id ?? "");
   const [state, formAction, isPending] = useActionState(action, initialProductActionState);
   const validationErrors = state.validationErrors?.map(({ field, message }) => [field, message] as [ProductField, string])
@@ -132,7 +133,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   }
 
   return (
-    <form action={formAction} className="mt-8 space-y-8" noValidate>
+    <form action={formAction} className="mt-8 space-y-8" noValidate onSubmit={(event) => { if (imagesRef.current && !imagesRef.current.prepareSubmission()) event.preventDefault(); }}>
       {product?.status === "archived" ? (
         <div className="rounded-[10px] border border-[#D1D5DB] bg-[#F3F4F6] px-4 py-3 text-sm text-[#374151]">
           This product is archived. Saving it as Draft or Published will reactivate it.
@@ -272,7 +273,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
         </div>
       </details>
 
-      <ProductImagesField disabled={isPending} error={state.fieldErrors.imageUrl} initialImages={product?.images ?? []} />
+      <ProductImagesField disabled={isPending} error={state.fieldErrors.imageUrl} initialImages={product?.images ?? []} ref={imagesRef} />
 
       <ProductOffersField disabled={isPending} error={state.fieldErrors.offerList} fieldErrors={state.fieldErrors} initialOffers={product?.offers ?? []} merchants={merchants} ref={offersRef} />
 

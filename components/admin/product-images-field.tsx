@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- previews may use administrator-provided hosts. */
-import { useRef, useState, type DragEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type DragEvent } from "react";
 import { ProductImageEditor } from "./product-image-editor";
 
 export type ProductImageValue = {
@@ -18,7 +18,6 @@ type Item = {
   id?: string;
   url: string;
   originalUrl?: string;
-  originalFile?: File;
   fileIndex?: number;
   name: string;
   size?: number;
@@ -31,15 +30,17 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const formatSize = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 
-export function ProductImagesField({
-  initialImages,
-  disabled,
-  error,
-}: {
+export type ProductImagesFieldHandle = { prepareSubmission: () => boolean };
+
+export const ProductImagesField = forwardRef<ProductImagesFieldHandle, {
   initialImages: ProductImageValue[];
   disabled: boolean;
   error?: string;
-}) {
+}>(function ProductImagesField({
+  initialImages,
+  disabled,
+  error,
+}, ref) {
   const sortedInitialImages = [...initialImages].sort((a, b) => a.sortOrder - b.sortOrder);
   const [items, setItems] = useState<Item[]>(
     sortedInitialImages.map((image) => ({
@@ -69,10 +70,56 @@ export function ProductImagesField({
   }));
 
   function syncFileInput() {
-    const transfer = new DataTransfer();
-    filesRef.current.forEach((file) => transfer.items.add(file));
-    if (inputRef.current) inputRef.current.files = transfer.files;
+    if (!inputRef.current) return filesRef.current.length === 0;
+    try {
+      const transfer = new DataTransfer();
+      filesRef.current.forEach((file) => transfer.items.add(file));
+      inputRef.current.files = transfer.files;
+      return inputRef.current.files.length === filesRef.current.length;
+    } catch {
+      return false;
+    }
   }
+
+  function pendingFilesAreAvailable() {
+    return items.filter((item) => item.kind === "upload").every((item) =>
+      item.fileIndex !== undefined && filesRef.current[item.fileIndex] instanceof File && filesRef.current[item.fileIndex].size > 0);
+  }
+
+  function removeLostUploadPreviews(forceAll = false) {
+    const previousFiles = filesRef.current;
+    const retainedFiles: File[] = [];
+    const retainedItems = items.flatMap((item) => {
+      if (item.kind !== "upload") return [item];
+      const file = item.fileIndex === undefined ? undefined : previousFiles[item.fileIndex];
+      if (forceAll || !(file instanceof File) || file.size <= 0) return [];
+      const fileIndex = retainedFiles.push(file) - 1;
+      return [{ ...item, fileIndex }];
+    });
+    filesRef.current = retainedFiles;
+    setItems(retainedItems);
+    const retainedPrimary = retainedItems.findIndex((item) => item.key === items[primary]?.key);
+    setPrimary(retainedPrimary >= 0 ? retainedPrimary : 0);
+    setLocalError("The browser lost access to this file. Select it again.");
+  }
+
+  useImperativeHandle(ref, () => ({ prepareSubmission() {
+    if (!pendingFilesAreAvailable()) { removeLostUploadPreviews(); return false; }
+    if (!syncFileInput()) { removeLostUploadPreviews(true); return false; }
+    return true;
+  } }));
+
+  // Browsers clear native file inputs after a Server Action submission. The
+  // stable File[] ref remains authoritative, so restore the input when the
+  // action finishes without remounting or serializing File objects.
+  useEffect(() => {
+    if (disabled || filesRef.current.length === 0) return;
+    if (!pendingFilesAreAvailable()) removeLostUploadPreviews();
+    else if (!syncFileInput()) removeLostUploadPreviews(true);
+    // Re-run only when an action completes or returns a new validation error.
+    // The helpers intentionally read the latest refs/state from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled, error]);
 
   function remove(index: number) {
     const removed = items[index];
@@ -152,7 +199,6 @@ export function ProductImagesField({
         kind: "upload" as const,
         url: objectUrl,
         originalUrl: objectUrl,
-        originalFile: file,
         fileIndex: base + index,
         name: file.name,
         size: file.size,
@@ -221,7 +267,8 @@ export function ProductImagesField({
           <p className="mt-2 text-center text-xs text-[#6B7280]">Drag and drop here, or use your phone gallery, camera, or computer.</p>
         </div>
         <div>
-          <label className="text-sm font-semibold" htmlFor="product-image-url">Add image URL</label>
+          <label className="text-sm font-semibold" htmlFor="product-image-url">Add image URL <span className="font-normal text-[#6B7280]">(Optional)</span></label>
+          <p className="mt-1 text-xs text-[#6B7280]">Optional: use this only when you already have a direct image URL.</p>
           <div className="mt-2 flex gap-2">
             <input className="min-h-12 min-w-0 flex-1 rounded-[10px] border border-[#D1D5DB] px-3" disabled={disabled} id="product-image-url" onChange={(event) => setUrl(event.target.value)} placeholder="https://example.com/image.jpg" type="url" value={url} />
             <button className="min-h-12 rounded-[10px] border border-[#2563EB] px-4 font-semibold text-[#1D4ED8]" disabled={disabled || !url.trim()} onClick={addUrl} type="button">Add</button>
@@ -270,8 +317,8 @@ export function ProductImagesField({
         </div>
       ) : <p className="mt-5 rounded-xl bg-[#F8FAFC] p-5 text-center text-sm text-[#6B7280]">No images selected. Existing URL-only products can still be saved without images.</p>}
 
-      {editingIndex !== null && items[editingIndex]?.kind === "upload" && items[editingIndex].originalFile ? (
-        <ProductImageEditor file={items[editingIndex].originalFile} isPrimary={editingIndex === primary} onApply={(file) => applyEdit(editingIndex, file)} onCancel={() => setEditingIndex(null)} sourceUrl={items[editingIndex].originalUrl!} />
+      {editingIndex !== null && items[editingIndex]?.kind === "upload" && items[editingIndex].fileIndex !== undefined && filesRef.current[items[editingIndex].fileIndex!] ? (
+        <ProductImageEditor file={filesRef.current[items[editingIndex].fileIndex!]} isPrimary={editingIndex === primary} onApply={(file) => applyEdit(editingIndex, file)} onCancel={() => setEditingIndex(null)} sourceUrl={items[editingIndex].url} />
       ) : null}
       {editingIndex !== null && items[editingIndex]?.kind !== "upload" ? (
         <div aria-labelledby="edit-image-url-title" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" role="dialog">
@@ -288,4 +335,4 @@ export function ProductImagesField({
       ) : null}
     </fieldset>
   );
-}
+});
