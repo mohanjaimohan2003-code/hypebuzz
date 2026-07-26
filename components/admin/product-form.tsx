@@ -87,8 +87,11 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   const offersRef = useRef<ProductOffersFieldHandle>(null);
   const action = mode === "create" ? createProduct : updateProduct.bind(null, product?.id ?? "");
   const [state, formAction, isPending] = useActionState(action, initialProductActionState);
-  const validationErrors = Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
+  const validationErrors = state.validationErrors?.map(({ field, message }) => [field, message] as [ProductField, string])
+    ?? Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
   const uniqueValidationErrors = validationErrors.filter(([field, reason], index, all) => all.findIndex(([, candidate]) => candidate === reason) === index && Boolean(field));
+  const showValidationBanner = Boolean(state.validationMode && uniqueValidationErrors.length > 0);
+  const showGeneralError = state.status === "error" && !state.validationMode;
 
   useEffect(() => {
     const currentErrors = Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
@@ -136,10 +139,10 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
         </div>
       ) : null}
 
-      {state.status === "error" ? (
+      {showValidationBanner || showGeneralError ? (
         <div aria-live="polite" className="rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">
           <p className="font-bold">{state.message}</p>
-          {uniqueValidationErrors.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{uniqueValidationErrors.map(([field, reason]) => <li key={field}><a className="underline underline-offset-2" href={`#${fieldElementIds[field] ?? "product-form-errors"}`}>{reason}</a></li>)}</ul> : null}
+          {showValidationBanner ? <ul className="mt-2 list-disc space-y-1 pl-5">{uniqueValidationErrors.map(([field, reason]) => <li key={field}><a className="underline underline-offset-2" href={`#${fieldElementIds[field] ?? "product-form-errors"}`}>{reason}</a></li>)}</ul> : null}
         </div>
       ) : null}
 

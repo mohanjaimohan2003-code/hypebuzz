@@ -60,6 +60,8 @@ export type ProductActionState = {
   status: "idle" | "error";
   message: string;
   fieldErrors: ProductFieldErrors;
+  validationErrors?: Array<{ field: ProductField; message: string }>;
+  validationMode?: "draft" | "publish";
 };
 
 export const initialProductActionState: ProductActionState = {
@@ -168,7 +170,7 @@ export function validateProductForm(formData: FormData):
   for (const [index, offer] of offers.entries()) {
     const label = `Offer ${index + 1}`;
     if (!offer || !isOfferUuid(offer.id) || !isOfferUuid(offer.merchantId)) { fieldErrors.merchantId = `${label}: select a valid merchant.`; fieldErrors.offerList = fieldErrors.merchantId; break; }
-    const contractError = validateOfferContract({
+    const contractErrors = validateOfferContract({
       affiliateUrl: offer.affiliateUrl,
       currentPrice: offer.currentPrice,
       originalPrice: offer.originalPrice,
@@ -176,15 +178,19 @@ export function validateProductForm(formData: FormData):
       availability: offer.stockStatus,
       isActive: false,
       merchantIsActive: true,
-    })[0];
-    if (contractError) {
-      const reason = `${label}: ${publicationErrorMessages[contractError]}`;
-      const target: Partial<Record<typeof contractError, ProductField>> = {
+    });
+    if (contractErrors.length) {
+      const target: Partial<Record<(typeof contractErrors)[number], ProductField>> = {
         OFFER_URL_INVALID: "affiliateUrl", OFFER_CURRENT_PRICE_INVALID: "currentPrice",
         OFFER_ORIGINAL_PRICE_INVALID: "originalPrice", OFFER_CURRENCY_INVALID: "currency",
         OFFER_AVAILABILITY_INVALID: "stockStatus", OFFER_MERCHANT_INACTIVE: "merchantId",
       };
-      fieldErrors[target[contractError] ?? "offerList"] = reason; fieldErrors.offerList = reason; break;
+      for (const contractError of contractErrors) {
+        const reason = `${label}: ${publicationErrorMessages[contractError]}`;
+        fieldErrors[target[contractError] ?? "offerList"] = reason;
+      }
+      fieldErrors.offerList = `${label}: ${publicationErrorMessages[contractErrors[0]]}`;
+      break;
     }
     if (offer.couponCode.length > 100 || offer.shippingNote.length > 300 || offer.offerTitle.length > 160) { fieldErrors.offerList = `${label}: optional offer details are too long.`; break; }
     if (offer.lastCheckedAt && Number.isNaN(new Date(offer.lastCheckedAt).getTime())) { fieldErrors.offerList = `${label}: enter a valid last checked date.`; break; }
@@ -203,13 +209,17 @@ export function validateProductForm(formData: FormData):
   }))) fieldErrors.offerList = publicationErrorMessages.PRODUCT_OFFER_REQUIRED;
 
   if (Object.keys(fieldErrors).length > 0) {
-    if (process.env.NODE_ENV === "development") console.error("Product validation failed", { validationMode: values.status === "published" ? "publish" : "draft", fieldErrors });
+    const validationMode = values.status === "published" ? "publish" : "draft";
+    const validationErrors = (Object.entries(fieldErrors) as Array<[ProductField, string]>).map(([field, message]) => ({ field, message }));
+    if (process.env.NODE_ENV === "development") console.error("Product validation failed", { validationMode, validationErrors, fieldErrors });
     return {
       success: false,
       state: {
         status: "error",
         message: values.status === "published" ? "Product cannot be published:" : "Draft cannot be saved:",
         fieldErrors,
+        validationErrors,
+        validationMode,
       },
     };
   }

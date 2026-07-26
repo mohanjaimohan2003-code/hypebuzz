@@ -42,10 +42,10 @@ test("creating without optional rich fields remains valid", () => {
 test("draft and publish validation return exact field reasons", () => {
   const draft = new FormData(); draft.set("status", "draft"); draft.set("imageManifest", "[]"); draft.set("offerManifest", "[]");
   const draftResult = validateProductForm(draft); assert.equal(draftResult.success, false);
-  if (!draftResult.success) { assert.equal(draftResult.state.message, "Draft cannot be saved:"); assert.ok(draftResult.state.fieldErrors.name); assert.ok(draftResult.state.fieldErrors.slug); assert.ok(draftResult.state.fieldErrors.categoryId); }
+  if (!draftResult.success) { assert.equal(draftResult.state.message, "Draft cannot be saved:"); assert.ok(draftResult.state.fieldErrors.name); assert.ok(draftResult.state.fieldErrors.slug); assert.ok(draftResult.state.fieldErrors.categoryId); assert.deepEqual(draftResult.state.validationErrors?.map((error) => error.field), ["name", "slug", "categoryId"]); }
   const publish = productForm(); publish.set("status", "published");
   const publishResult = validateProductForm(publish); assert.equal(publishResult.success, false);
-  if (!publishResult.success) { assert.equal(publishResult.state.message, "Product cannot be published:"); assert.ok(publishResult.state.fieldErrors.offerList); }
+  if (!publishResult.success) { assert.equal(publishResult.state.message, "Product cannot be published:"); assert.ok(publishResult.state.fieldErrors.offerList); assert.ok((publishResult.state.validationErrors?.length ?? 0) > 0); }
 });
 
 test("editing rich fields parses replacement values", () => {
