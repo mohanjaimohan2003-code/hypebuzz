@@ -188,6 +188,15 @@ export async function resolveOrCreateImportedBrand(rawName: string): Promise<Imp
 
   const inserted = await supabase.from("brands").insert({ name, slug, is_active: true, description: null, logo_url: null, website_url: null })
     .select("id, name, slug, is_active").single<{ id: string; name: string; slug: string; is_active: boolean }>();
+  if (inserted.error) {
+    console.error({
+      step: "insert imported brand",
+      code: inserted.error.code,
+      message: inserted.error.message,
+      details: inserted.error.details,
+      hint: inserted.error.hint,
+    });
+  }
   if (!inserted.error && inserted.data) {
     revalidatePath("/admin/brands", "layout");
     return { status: "created", brand: { id: inserted.data.id, name: inserted.data.name, slug: inserted.data.slug, isActive: inserted.data.is_active }, message: `Brand '${inserted.data.name}' was created and selected. You can add its logo later.` };
@@ -197,7 +206,13 @@ export async function resolveOrCreateImportedBrand(rawName: string): Promise<Imp
     if (!concurrent.error && concurrent.matches.length === 1) return { status: "selected", brand: concurrent.matches[0], message: `Brand '${concurrent.matches[0].name}' was selected.` };
     if (!concurrent.error && concurrent.matches.length > 1) return { status: "selection_required", brands: concurrent.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
   }
-  return { status: "error", message: operationErrorMessage("create imported brand", inserted.error, "The imported brand could not be created.") };
+  if (process.env.NODE_ENV === "development") {
+    return {
+      status: "error",
+      message: `[insert imported brand] ${inserted.error?.code ?? "unknown"}: ${inserted.error?.message ?? "Supabase returned no inserted brand."}${inserted.error?.details ? ` Details: ${inserted.error.details}` : ""}${inserted.error?.hint ? ` Hint: ${inserted.error.hint}` : ""}`,
+    };
+  }
+  return { status: "error", message: "The imported brand could not be created." };
 }
 
 async function categoryExists(categoryId: string): Promise<{
