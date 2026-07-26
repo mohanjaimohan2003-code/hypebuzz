@@ -29,6 +29,22 @@ type SupabaseDatabaseError = {
   hint?: string;
 };
 
+function logSupabaseError(step: string, error: SupabaseDatabaseError | null) {
+  console.error({
+    step,
+    code: error?.code ?? "unknown",
+    message: error?.message ?? "Supabase returned an unknown database error.",
+    details: error?.details ?? null,
+    hint: error?.hint ?? null,
+  });
+}
+
+function operationErrorMessage(step: string, error: SupabaseDatabaseError, productionMessage: string) {
+  logSupabaseError(step, error);
+  if (process.env.NODE_ENV !== "development") return productionMessage;
+  return `[${step}] ${error.code ?? "unknown"}: ${error.message ?? "Unknown Supabase error."}${error.details ? ` Details: ${error.details}` : ""}${error.hint ? ` Hint: ${error.hint}` : ""}`;
+}
+
 function extractDatabaseObject(
   error: SupabaseDatabaseError,
   kind: "table" | "column" | "constraint",
@@ -50,7 +66,7 @@ function extractDatabaseObject(
 
 function databaseError(
   error: SupabaseDatabaseError | null,
-  operation: "insert" | "update",
+  operation: string,
 ): ProductActionState {
   const reportedTable = extractDatabaseObject(error ?? {}, "table");
   const diagnostic = {
@@ -64,7 +80,15 @@ function databaseError(
     hint: error?.hint ?? "not reported",
   };
 
-  console.error("Supabase product save failed", diagnostic);
+  logSupabaseError(operation, error);
+
+  if (process.env.NODE_ENV === "development") {
+    return {
+      status: "error",
+      message: `[${operation}] ${diagnostic.code}: ${diagnostic.message}${error?.details ? ` Details: ${error.details}` : ""}${error?.hint ? ` Hint: ${error.hint}` : ""}`,
+      fieldErrors: {},
+    };
+  }
 
   if (error?.code === "23505") {
     return {
@@ -108,9 +132,7 @@ function databaseError(
 
   return {
     status: "error",
-    message: process.env.NODE_ENV === "development"
-      ? `The product could not be saved (${diagnostic.code}: ${diagnostic.message})`
-      : "The product could not be saved. Please try again or contact an administrator.",
+    message: "The product could not be saved. Please try again or contact an administrator.",
     fieldErrors: {},
   };
 }
@@ -160,7 +182,7 @@ async function saveProductWithOffer(productId: string | null, values: ProductFor
   const offerId = primaryOffer?.persisted === true && isUuid(primaryOffer.id) ? primaryOffer.id : (isUuid(offerIdValue) ? offerIdValue : null);
   const hasOffer = Boolean(primaryOffer);
   const supabase = await createClient();
-  return supabase.rpc("save_product_with_offer", {
+  const result = await supabase.rpc("save_product_with_offer", {
     p_product_id: productId,
     p_name: values.name,
     p_slug: values.slug,
@@ -179,6 +201,8 @@ async function saveProductWithOffer(productId: string | null, values: ProductFor
     p_availability: hasOffer ? primaryOffer.stockStatus : null,
     p_offer_is_active: hasOffer ? primaryOffer.isActive : null,
   });
+  if (result.error) logSupabaseError(productId ? "update products via save_product_with_offer" : "insert products via save_product_with_offer", result.error);
+  return result;
 }
 
 async function validateBrandReference(brandId: string) {
@@ -204,10 +228,12 @@ async function validateProductOfferMerchants(values: ProductFormValues) {
 
 async function saveProductDetails(productId: string, values: ProductFormValues) {
   const supabase = await createClient();
-  return supabase.from("products").update({
+  const result = await supabase.from("products").update({
     brand_id: values.brandId || null,
     ...richFieldsDatabasePayload(values),
   }).eq("id", productId).select("id").maybeSingle();
+  if (result.error) logSupabaseError("update products rich fields (description, highlights, specifications, SEO)", result.error);
+  return result;
 }
 
 const IMAGE_BUCKET = "product-images";
@@ -216,9 +242,9 @@ function safeFileName(name: string) { return name.replace(/\.[^.]+$/,"").toLower
 type SavedImage = { id:string; image_url:string; storage_path:string|null; source_type:"upload"|"external"; alt_text:string; sort_order:number; is_primary:boolean };
 async function syncProductImages(productId:string, productName:string, values:ProductFormValues, formData:FormData) {
   const supabase=await createClient(); const files=formData.getAll("uploadedImages").filter((x):x is File=>x instanceof File&&x.size>0); const existingResult=await supabase.from("product_images").select("*").eq("product_id",productId).returns<ProductImage[]>();
-  if(existingResult.error) return "Product images could not be loaded."; const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
-  for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "An existing image is no longer available. Refresh and try again.";}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];const ext=await imageExtension(file);if(!ext){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "Only genuine JPG, PNG, or WebP images are allowed.";}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "This image could not be uploaded. Please try again.";}uploaded.push(path);rows.push({id,image_url:`/product-images/${id}`,storage_path:path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
-  if(rows.length&&!rows.some(x=>x.is_primary))rows[0].is_primary=true;const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "Product images could not be saved. Please try again.";}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length)await supabase.storage.from(IMAGE_BUCKET).remove(removed);return null;
+  if(existingResult.error) return operationErrorMessage("select product_images before replacement", existingResult.error, "Product images could not be loaded."); const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
+  for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after validation failure",cleanup.error);}return "An existing image is no longer available. Refresh and try again.";}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];const ext=await imageExtension(file);if(!ext){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after invalid file",cleanup.error);}return "Only genuine JPG, PNG, or WebP images are allowed.";}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after upload failure",cleanup.error);}return operationErrorMessage("upload image to product-images storage",result.error,"This image could not be uploaded. Please try again.");}uploaded.push(path);rows.push({id,image_url:`/product-images/${id}`,storage_path:path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
+  if(rows.length&&!rows.some(x=>x.is_primary))rows[0].is_primary=true;const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after product_images failure",cleanup.error);}return operationErrorMessage("insert product_images via replace_product_images",replaced.error,"Product images could not be saved. Please try again.");}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(removed);if(cleanup.error)logSupabaseError("remove replaced product images from storage",cleanup.error);}return null;
 }
 
 async function syncProductOffers(productId: string, values: ProductFormValues) {
@@ -244,8 +270,8 @@ async function syncProductOffers(productId: string, values: ProductFormValues) {
   }));
   const result = await supabase.rpc("replace_product_offers", { p_product_id: productId, p_offers: rows as unknown as Json });
   if (result.error) {
-    console.error("Supabase product offer sync failed", { code: result.error.code, message: result.error.message });
-    return result.error.code === "23505" ? "Only one active offer per merchant is allowed." : "Product offers could not be saved. Please try again.";
+    return operationErrorMessage("insert product_offers via replace_product_offers", result.error,
+      result.error.code === "23505" ? "Only one active offer per merchant is allowed." : "Product offers could not be saved. Please try again.");
   }
   return null;
 }
@@ -289,14 +315,14 @@ export async function createProduct(
   const initialPrimary = validation.data.imageManifest.find(x=>x.isPrimary&&x.kind==="external")?.url ?? validation.data.imageManifest.find(x=>x.kind==="external")?.url ?? null;
   const { data, error } = await saveProductWithOffer(null, validation.data, formData, initialPrimary);
 
-  if (error) return databaseError(error, "insert");
+  if (error) return databaseError(error, "insert products via save_product_with_offer");
   if (!data) return { status:"error",message:"The product could not be created.",fieldErrors:{} };
   const brandResult = await saveProductDetails(data, validation.data);
-  if (brandResult.error || !brandResult.data) { const supabase = await createClient(); await supabase.rpc("delete_failed_product", { p_product_id: data }); return databaseError(brandResult.error, "insert"); }
+  if (brandResult.error || !brandResult.data) { const supabase = await createClient(); const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after rich-field update",cleanup.error); return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)"); }
   const imageError=await syncProductImages(data,validation.data.name,validation.data,formData);
-  if(imageError){const supabase=await createClient();await supabase.rpc("delete_failed_product",{p_product_id:data});return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
+  if(imageError){const supabase=await createClient();const cleanup=await supabase.rpc("delete_failed_product",{p_product_id:data});if(cleanup.error)logSupabaseError("delete failed product after image failure",cleanup.error);return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
   const offerError = await syncProductOffers(data, validation.data);
-  if (offerError) { const supabase = await createClient(); await supabase.rpc("delete_failed_product", { p_product_id: data }); return { status: "error", message: offerError, fieldErrors: { offerList: offerError } }; }
+  if (offerError) { const supabase = await createClient(); const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after product_offers failure",cleanup.error); return { status: "error", message: offerError, fieldErrors: { offerList: offerError } }; }
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=created");
@@ -338,12 +364,12 @@ export async function updateProduct(
   const supabase=await createClient(); const current=await supabase.from("products").select("primary_image_url").eq("id",productId).maybeSingle<{primary_image_url:string|null}>();
   const { data, error } = await saveProductWithOffer(productId, validation.data, formData, current.data?.primary_image_url??null);
 
-  if (error) return databaseError(error, "update");
+  if (error) return databaseError(error, "update products via save_product_with_offer");
   if (!data) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
   const brandResult = await saveProductDetails(productId, validation.data);
-  if (brandResult.error || !brandResult.data) return databaseError(brandResult.error, "update");
+  if (brandResult.error || !brandResult.data) return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)");
   const imageError=await syncProductImages(productId,validation.data.name,validation.data,formData);
   if(imageError)return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};
   const offerError = await syncProductOffers(productId, validation.data);
@@ -372,7 +398,7 @@ export async function archiveProduct(
     .select("id")
     .maybeSingle();
 
-  if (error) return databaseError(error, "update");
+  if (error) return databaseError(error, "archive product");
   if (!data) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
