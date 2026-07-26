@@ -9,6 +9,7 @@ import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/o
 import { richFieldsDatabasePayload } from "@/lib/products/rich-fields";
 import { cleanImportedReferenceDisplayName, normalizeReferenceName } from "@/lib/admin/product-import/match-record";
 import { createBrandSlug } from "@/lib/validation/brand";
+import { importedBrandProductionError } from "@/lib/admin/product-import/brand-error";
 import {
   isUuid,
   validateProductForm,
@@ -186,7 +187,10 @@ export async function resolveOrCreateImportedBrand(rawName: string): Promise<Imp
   if (existing.matches.length === 1) return { status: "selected", brand: existing.matches[0], message: `Brand '${existing.matches[0].name}' was selected.` };
   if (existing.matches.length > 1) return { status: "selection_required", brands: existing.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
 
-  const inserted = await supabase.from("brands").insert({ name, slug, is_active: true, description: null, logo_url: null, website_url: null })
+  // Use only the two required columns from migration 001. Production may not
+  // yet contain optional migration-009 fields such as description/website_url;
+  // is_active already defaults to true.
+  const inserted = await supabase.from("brands").insert({ name, slug })
     .select("id, name, slug, is_active").single<{ id: string; name: string; slug: string; is_active: boolean }>();
   if (inserted.error) {
     console.error({
@@ -203,7 +207,7 @@ export async function resolveOrCreateImportedBrand(rawName: string): Promise<Imp
   }
   if (inserted.error?.code === "23505") {
     const concurrent = await findMatches();
-    if (!concurrent.error && concurrent.matches.length === 1) return { status: "selected", brand: concurrent.matches[0], message: `Brand '${concurrent.matches[0].name}' was selected.` };
+    if (!concurrent.error && concurrent.matches.length === 1) return { status: "selected", brand: concurrent.matches[0], message: `Brand '${concurrent.matches[0].name}' already exists and has been selected.` };
     if (!concurrent.error && concurrent.matches.length > 1) return { status: "selection_required", brands: concurrent.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
   }
   if (process.env.NODE_ENV === "development") {
@@ -212,7 +216,7 @@ export async function resolveOrCreateImportedBrand(rawName: string): Promise<Imp
       message: `[insert imported brand] ${inserted.error?.code ?? "unknown"}: ${inserted.error?.message ?? "Supabase returned no inserted brand."}${inserted.error?.details ? ` Details: ${inserted.error.details}` : ""}${inserted.error?.hint ? ` Hint: ${inserted.error.hint}` : ""}`,
     };
   }
-  return { status: "error", message: "The imported brand could not be created." };
+  return { status: "error", message: importedBrandProductionError(inserted.error, name) };
 }
 
 async function categoryExists(categoryId: string): Promise<{

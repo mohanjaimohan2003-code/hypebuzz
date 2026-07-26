@@ -8,6 +8,7 @@ import { productImportExample } from "../lib/admin/product-import/example";
 import { cleanImportedReferenceDisplayName, matchImportReference } from "../lib/admin/product-import/match-record";
 import { parseProductImportJson } from "../lib/admin/product-import/schema";
 import { matchImportedCategory } from "../lib/catalog/category-mapping";
+import { importedBrandProductionError } from "../lib/admin/product-import/brand-error";
 
 const references = {
   categories: [{ id: "category-1", name: "Sports Shoes", slug: "sports-shoes", isActive: true }],
@@ -82,6 +83,12 @@ test("brand display names are cleaned without changing capitalization", () => {
   assert.equal(cleanImportedReferenceDisplayName("  ASIAN   Footwear  "), "ASIAN Footwear");
   assert.equal(matchImportReference("asian", references.brands, "Brand").id, "brand-1");
   assert.equal(matchImportReference("AsIaN", references.brands, "Brand").id, "brand-1");
+});
+
+test("brand insert failures produce useful safe causes", () => {
+  assert.equal(importedBrandProductionError({ code: "42501" }, "ASIAN"), "Brand creation was blocked by admin permissions.");
+  assert.equal(importedBrandProductionError({ code: "PGRST204" }, "ASIAN"), "Brand could not be created because a required database field is missing.");
+  assert.match(importedBrandProductionError({ code: "XX000" }, "ASIAN"), /Retry/);
 });
 
 test("numeric and formatted rupee prices normalize safely", () => {
