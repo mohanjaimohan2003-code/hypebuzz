@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ProductCardProduct } from "@/components/product/product-card";
 import { createClient } from "@/lib/supabase/server";
+import { isDatabaseOfferEligibleForPublication } from "@/lib/offers/publication-contract";
 
 export type HomepageBrand = { id: string; name: string; slug: string; productCount: number };
 export type HomepageCategory = { id: string; name: string; slug: string; productCount: number };
@@ -21,11 +22,16 @@ type ProductRow = {
   slug: string;
   primary_image_url: string | null;
   brand: { name: string } | null;
+  category: { id: string };
   product_offers: Array<{
     current_price: number;
     original_price?: number | null;
     currency: string;
     merchant_id: string;
+    availability: string | null;
+    affiliate_url: string;
+    is_active: boolean;
+    merchant: { is_active: boolean } | null;
   }>;
 };
 type BrandRow = { id: string; name: string; slug: string; products: Array<{ count: number }> };
@@ -69,7 +75,8 @@ async function runHomepageQuery<T extends { data: unknown; error: HomepageQueryE
 }
 
 function productCard(product: ProductRow, badge?: string): ProductCardProduct {
-  const cheapest = [...product.product_offers].sort(
+  const eligibleOffers = product.product_offers.filter(isDatabaseOfferEligibleForPublication);
+  const cheapest = [...eligibleOffers].sort(
     (left, right) => Number(left.current_price) - Number(right.current_price),
   )[0];
   return {
@@ -80,9 +87,9 @@ function productCard(product: ProductRow, badge?: string): ProductCardProduct {
     imageAlt: product.name,
     price: cheapest ? Number(cheapest.current_price) : undefined,
     currency: cheapest?.currency,
-    storeCount: new Set(product.product_offers.map((offer) => offer.merchant_id)).size,
+    storeCount: new Set(eligibleOffers.map((offer) => offer.merchant_id)).size,
     productHref: `/products/${product.slug}`,
-    dealsHref: `/products/${product.slug}#deals`,
+    dealsHref: `/products/${product.slug}#compare-prices`,
     badge,
   };
 }
@@ -91,6 +98,7 @@ function dealCards(products: ProductRow[]) {
   return products
     .flatMap((product) => {
       const discounts = product.product_offers.flatMap((offer) => {
+        if (!isDatabaseOfferEligibleForPublication(offer)) return [];
         const current = Number(offer.current_price);
         const original = offer.original_price === null || offer.original_price === undefined
           ? null
@@ -108,12 +116,12 @@ function dealCards(products: ProductRow[]) {
 
 export async function getHomepageData(): Promise<HomepageData> {
   const supabase = await createClient();
-  const productSelect = "id, name, slug, primary_image_url, brand:brands(name), product_offers(current_price, currency, merchant_id)";
+  const productSelect = "id, name, slug, primary_image_url, brand:brands(name), category:categories!inner(id), product_offers(current_price, original_price, currency, merchant_id, affiliate_url, availability, is_active, merchant:merchants(is_active))";
   const [featured, trending, latest, deals, brands, categories] = await Promise.all([
     runHomepageQuery("featured products", supabase.from("products").select(productSelect).eq("status", "published").eq("is_featured", true).order("updated_at", { ascending: false }).limit(4)),
     runHomepageQuery("trending products", supabase.from("products").select(productSelect).eq("status", "published").eq("is_trending", true).order("updated_at", { ascending: false }).limit(4)),
     runHomepageQuery("latest products", supabase.from("products").select(productSelect).eq("status", "published").order("created_at", { ascending: false }).limit(4)),
-    runHomepageQuery("best deals", supabase.from("products").select("id, name, slug, primary_image_url, brand:brands(name), product_offers(current_price, original_price, currency, merchant_id)").eq("status", "published").order("updated_at", { ascending: false }).limit(100)),
+    runHomepageQuery("best deals", supabase.from("products").select(productSelect).eq("status", "published").order("updated_at", { ascending: false }).limit(100)),
     runHomepageQuery("popular brands", supabase.from("brands").select("id, name, slug, products(count)").eq("is_active", true).order("name").limit(100)),
     runHomepageQuery("featured categories", supabase.from("categories").select("id, name, slug, products(count)").eq("is_active", true).order("name").limit(8)),
   ]);
@@ -143,7 +151,7 @@ export async function getTrendingProducts(): Promise<{
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, slug, primary_image_url, brand:brands(name), product_offers(current_price, currency, merchant_id)")
+    .select("id, name, slug, primary_image_url, brand:brands(name), category:categories!inner(id), product_offers(current_price, original_price, currency, merchant_id, affiliate_url, availability, is_active, merchant:merchants(is_active))")
     .eq("status", "published")
     .eq("is_trending", true)
     .order("updated_at", { ascending: false })

@@ -59,7 +59,7 @@ export function OffersTable({ offers }: { offers: AdminOfferListItem[] }) {
               <div><dt className="text-[#6B7280]">Discount</dt><dd className="mt-1">{offer.originalPrice === null ? <span className="text-[#9CA3AF]">Not set</span> : <Discount offer={offer} />}</dd></div>
               <div><dt className="text-[#6B7280]">Currency</dt><dd className="mt-1 font-semibold text-[#111827]">{offer.currency}</dd></div>
               <div><dt className="text-[#6B7280]">Stock</dt><dd className="mt-1"><StockBadge status={offer.stockStatus} /></dd></div>
-              <div className="col-span-2"><dt className="text-[#6B7280]">Last updated</dt><dd className="mt-1 font-medium text-[#111827]"><time dateTime={offer.updatedAt}>{formatDate(offer.updatedAt)}</time></dd></div>
+              <div className="col-span-2"><dt className="text-[#6B7280]">Last checked</dt><dd className="mt-1 font-medium text-[#111827]">{offer.lastCheckedAt ? <time dateTime={offer.lastCheckedAt}>{formatDate(offer.lastCheckedAt)}</time> : "Never"}{offer.isStale ? <span className="ml-2 rounded-full bg-[#FEF3C7] px-2 py-1 text-xs font-bold text-[#92400E]">Stale</span> : null}</dd></div>
             </dl>
             <div className="mt-4 border-t border-[#E5E7EB] pt-4"><OfferActions {...offer} offerId={offer.id} /></div>
           </article>
@@ -71,7 +71,7 @@ export function OffersTable({ offers }: { offers: AdminOfferListItem[] }) {
           <caption className="sr-only">Affiliate offers sorted by most recently updated</caption>
           <thead className="bg-[#F8FAFC] text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
             <tr>
-              <th className="px-5 py-3" scope="col">Product</th><th className="px-5 py-3" scope="col">Merchant</th><th className="px-5 py-3" scope="col">Affiliate URL</th><th className="px-5 py-3" scope="col">Current price</th><th className="px-5 py-3" scope="col">Original price</th><th className="px-5 py-3" scope="col">Discount</th><th className="px-5 py-3" scope="col">Currency</th><th className="px-5 py-3" scope="col">Stock status</th><th className="px-5 py-3" scope="col">Status</th><th className="px-5 py-3" scope="col">Last updated</th><th className="px-5 py-3" scope="col">Actions</th>
+              <th className="px-5 py-3" scope="col">Product</th><th className="px-5 py-3" scope="col">Merchant</th><th className="px-5 py-3" scope="col">Affiliate URL</th><th className="px-5 py-3" scope="col">Current price</th><th className="px-5 py-3" scope="col">Original price</th><th className="px-5 py-3" scope="col">Discount</th><th className="px-5 py-3" scope="col">Currency</th><th className="px-5 py-3" scope="col">Stock status</th><th className="px-5 py-3" scope="col">Status</th><th className="px-5 py-3" scope="col">Last checked</th><th className="px-5 py-3" scope="col">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#E5E7EB]">
@@ -84,7 +84,7 @@ export function OffersTable({ offers }: { offers: AdminOfferListItem[] }) {
                 <td className="px-5 py-4">{offer.originalPrice === null ? <span className="text-sm text-[#9CA3AF]">Not set</span> : <PriceDisplay currency={offer.currency} muted value={offer.originalPrice} />}</td>
                 <td className="px-5 py-4">{offer.originalPrice === null ? <span className="text-sm text-[#9CA3AF]">Not set</span> : <Discount offer={offer} />}</td>
                 <td className="px-5 py-4 text-sm font-semibold text-[#111827]">{offer.currency}</td><td className="px-5 py-4"><StockBadge status={offer.stockStatus} /></td><td className="px-5 py-4"><StatusBadge isActive={offer.isActive} /></td>
-                <td className="px-5 py-4 text-sm text-[#6B7280]"><time dateTime={offer.updatedAt}>{formatDate(offer.updatedAt)}</time></td>
+                <td className="px-5 py-4 text-sm text-[#6B7280]">{offer.lastCheckedAt ? <time dateTime={offer.lastCheckedAt}>{formatDate(offer.lastCheckedAt)}</time> : "Never"}{offer.isStale ? <span className="ml-2 text-xs font-bold text-[#92400E]">Stale</span> : null}</td>
                 <td className="px-5 py-4"><OfferActions {...offer} offerId={offer.id} /></td>
               </tr>
             ))}

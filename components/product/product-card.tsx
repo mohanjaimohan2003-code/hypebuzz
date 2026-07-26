@@ -1,6 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
-import { CompareButton, WishlistButton } from "./product-card-actions";
+import { WishlistButton } from "./product-card-actions";
 
 export type ProductCardProduct = {
   id: string; name: string; brand: string; imageSrc: string; imageAlt: string;
@@ -28,8 +28,8 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
       <div className="flex flex-1 flex-col border-t border-[#F1F5F9] p-4">
         <p className="text-xs font-medium text-[#6B7280]">{product.brand}</p>
         <h3 className="mt-1 min-h-12 text-[15px] font-semibold leading-6 text-[#111827]"><Link className={`rounded-sm hover:text-[#1D4ED8] ${focus}`} href={product.productHref} title={product.name}><span className="line-clamp-2">{product.name}</span></Link></h3>
-        <div className="mt-3">{price ? <><p className="text-xs text-[#6B7280]">From</p><p className="text-xl font-bold leading-7 text-[#1455E8]">{price}</p><p className="text-xs text-[#6B7280]">Across {product.storeCount} {product.storeCount === 1 ? "store" : "stores"}</p></> : <><p className="text-sm font-semibold text-[#111827]">Offers unavailable</p><p className="mt-1 text-xs text-[#6B7280]">Check the product page for updates.</p></>}</div>
-        <div className="mt-auto grid grid-cols-[auto_1fr] gap-2 pt-4"><CompareButton productName={product.name} /><Link className={`flex min-h-11 items-center justify-center rounded-[10px] border border-[#2563EB] px-3 text-sm font-bold text-[#1D4ED8] transition-colors hover:bg-[#2563EB] hover:text-white ${focus}`} href={product.dealsHref}>View deals</Link></div>
+        <div className="mt-3">{price ? <><p className="text-xs text-[#6B7280]">From</p><p className="text-xl font-bold leading-7 text-[#1455E8]">{price}</p><p className="text-xs text-[#6B7280]">Across {product.storeCount} {product.storeCount === 1 ? "store" : "stores"}</p></> : <><p className="text-sm font-semibold text-[#111827]">Price unavailable</p><p className="mt-1 text-xs text-[#6B7280]">Check the product page for updates.</p></>}</div>
+        <div className="mt-auto pt-4"><Link className={`flex min-h-11 items-center justify-center rounded-[10px] border border-[#2563EB] px-3 text-sm font-bold text-[#1D4ED8] transition-colors hover:bg-[#2563EB] hover:text-white ${focus}`} href={product.dealsHref}>Compare</Link></div>
       </div>
     </article>
   );

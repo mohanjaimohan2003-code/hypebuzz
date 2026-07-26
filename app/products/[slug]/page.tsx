@@ -6,15 +6,14 @@ import { HomepageHeader } from "@/components/layout/homepage-header";
 import { PriceComparison } from "@/components/product/price-comparison";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductGallery } from "@/components/product/product-gallery";
+import { ProductHighlights, ProductRichDetails } from "@/components/product/product-rich-content";
 import { getPublicProduct } from "@/lib/data/public-product";
+import { schemaAvailability } from "@/lib/offers/publication-contract";
+import { productSeoCopy } from "@/lib/products/seo";
 import { absoluteUrl, jsonLd } from "@/lib/seo/site";
 
 function money(value: number, currency: string) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
-}
-
-function readableName(value: string) {
-  return value.replaceAll("_", " ").replaceAll("-", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function absoluteImageUrl(imageUrl: string | null) {
@@ -22,35 +21,29 @@ function absoluteImageUrl(imageUrl: string | null) {
   try { return new URL(imageUrl, absoluteUrl("/")).toString(); } catch { return null; }
 }
 
-function offerIsInStock(availability: string | null) {
-  if (!availability) return false;
-  const normalized = availability.toLowerCase();
-  return normalized.includes("in stock") || normalized === "available";
-}
-
 export async function generateMetadata({ params }: PageProps<"/products/[slug]">): Promise<Metadata> {
   const { slug } = await params;
   const product = await getPublicProduct(slug);
   if (!product) return { title: "Product not found", robots: { index: false, follow: true } };
-  const description = product.shortDescription ?? product.description ?? `Compare current prices and offers for ${product.name}.`;
+  const copy = productSeoCopy(product);
   const canonical = absoluteUrl(`/products/${product.slug}`);
   return {
-    title: `${product.name} prices and offers`,
-    description,
+    title: copy.title,
+    description: copy.description,
     alternates: { canonical },
     openGraph: {
       type: "website",
       locale: "en_US",
-      title: `${product.name} prices and offers`,
-      description,
+      title: copy.title,
+      description: copy.description,
       url: canonical,
       siteName: "HypeBuzz",
       images: absoluteImageUrl(product.imageUrl) ? [{ url: absoluteImageUrl(product.imageUrl)!, alt: product.name }] : undefined,
     },
     twitter: {
       card: product.imageUrl ? "summary_large_image" : "summary",
-      title: `${product.name} prices and offers`,
-      description,
+      title: copy.title,
+      description: copy.description,
       images: absoluteImageUrl(product.imageUrl) ? [absoluteImageUrl(product.imageUrl)!] : undefined,
     },
   };
@@ -75,23 +68,23 @@ export default async function ProductPage({ params }: PageProps<"/products/[slug
         "@id": `${canonical}#product`,
         name: product.name,
         description: product.shortDescription ?? product.description ?? undefined,
-        image: absoluteImageUrl(product.imageUrl) ? [absoluteImageUrl(product.imageUrl)] : undefined,
+        image: product.images.map((image) => absoluteImageUrl(image.imageUrl)).filter((image): image is string => Boolean(image)),
         brand: product.brand ? { "@type": "Brand", name: product.brand.name } : undefined,
         category: product.category?.name,
         url: canonical,
         offers: product.offers.length ? {
           "@type": "AggregateOffer",
           priceCurrency: product.currency,
-          lowPrice: product.lowestPrice,
-          highPrice: Math.max(...product.offers.map((offer) => offer.currentPrice)),
+          lowPrice: product.lowestPrice ?? undefined,
+          highPrice: product.highestPrice ?? undefined,
           offerCount: product.offers.length,
           offers: product.offers.map((offer) => ({
             "@type": "Offer",
             price: offer.currentPrice,
             priceCurrency: offer.currency,
-            url: `${canonical}#deals`,
+            url: `${canonical}#compare-prices`,
             seller: { "@type": "Organization", name: offer.merchant.name },
-            availability: offerIsInStock(offer.availability) ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            availability: schemaAvailability(offer.availability),
           })),
         } : undefined,
       },
@@ -121,23 +114,22 @@ export default async function ProductPage({ params }: PageProps<"/products/[slug
               </div>
               <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#111827] sm:text-4xl" id="product-title">{product.name}</h1>
               {product.shortDescription ? <p className="mt-4 text-lg leading-7 text-[#4B5563]">{product.shortDescription}</p> : null}
+              <ProductHighlights highlights={product.features} />
               <dl className="mt-6 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-5">
                 <div><dt className="text-sm text-[#6B7280]">Lowest price</dt><dd className="mt-1 text-2xl font-bold text-[#111827]">{product.lowestPrice === null ? "No active offer" : money(product.lowestPrice, product.currency)}</dd></div>
                 <div><dt className="text-sm text-[#6B7280]">Highest discount</dt><dd className="mt-1 text-xl font-bold text-[#15803D]">{product.highestDiscount === null ? "—" : `${Math.round(product.highestDiscount)}% off`}</dd></div>
                 <div><dt className="text-sm text-[#6B7280]">Availability</dt><dd className="mt-1 font-semibold text-[#111827]">{product.availability}</dd></div>
                 <div><dt className="text-sm text-[#6B7280]">Last updated</dt><dd className="mt-1 font-semibold text-[#111827]"><time dateTime={product.updatedAt}>{new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(product.updatedAt))}</time></dd></div>
               </dl>
-              {product.offers[0] ? <a className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-[10px] border border-[#EA580C] bg-[#F97316] px-6 font-bold text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" href="#deals">Compare all {product.offers.length} {product.offers.length === 1 ? "offer" : "offers"}</a> : null}
+              {product.offers[0] ? <a className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-[10px] border border-[#EA580C] bg-[#F97316] px-6 font-bold text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" href="#compare-prices">Compare all {product.offers.length} {product.offers.length === 1 ? "offer" : "offers"}</a> : null}
             </section>
           </div>
 
           <div className="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.8fr)]">
             <div className="space-y-10">
-              {product.description ? <section aria-labelledby="description-heading"><h2 className="text-2xl font-bold text-[#111827]" id="description-heading">About this product</h2><p className="mt-4 max-w-[720px] whitespace-pre-line leading-7 text-[#4B5563]">{product.description}</p></section> : null}
-              {product.features.length ? <section aria-labelledby="features-heading"><h2 className="text-2xl font-bold text-[#111827]" id="features-heading">Features</h2><ul className="mt-4 grid gap-3 sm:grid-cols-2">{product.features.map((feature) => <li className="flex gap-3 rounded-[10px] bg-white p-4 text-[#374151] ring-1 ring-[#E5E7EB]" key={feature}><span aria-hidden="true" className="font-bold text-[#2563EB]">✓</span>{feature}</li>)}</ul></section> : null}
-              {product.specifications.length ? <section aria-labelledby="specifications-heading"><h2 className="text-2xl font-bold text-[#111827]" id="specifications-heading">Specifications</h2><dl className="mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white">{product.specifications.map((specification, index) => <div className={`grid grid-cols-[minmax(8rem,0.4fr)_1fr] gap-4 p-4 ${index ? "border-t border-[#E5E7EB]" : ""}`} key={specification.name}><dt className="font-medium text-[#6B7280]">{readableName(specification.name)}</dt><dd className="text-[#111827]">{specification.value}</dd></div>)}</dl></section> : null}
+              <ProductRichDetails description={product.description} specifications={product.specifications} />
             </div>
-            <PriceComparison offers={product.offers} />
+            <div><dl className="mb-5 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4"><div><dt className="text-xs text-[#6B7280]">Stores</dt><dd className="text-lg font-bold">{product.activeMerchantCount}</dd></div><div><dt className="text-xs text-[#6B7280]">Maximum savings</dt><dd className="text-lg font-bold text-[#15803D]">{product.maximumSavings === null ? "—" : money(product.maximumSavings, product.currency)}</dd></div></dl><PriceComparison offers={product.offers} /></div>
           </div>
 
           {product.relatedProducts.length ? <section aria-labelledby="related-heading" className="py-12 sm:py-16"><h2 className="text-2xl font-bold text-[#111827] sm:text-3xl" id="related-heading">Related products</h2><p className="mt-2 text-sm text-[#6B7280]">More products from the same brand or category.</p><div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-4">{product.relatedProducts.map((related) => <ProductCard key={related.id} product={related} />)}</div></section> : null}

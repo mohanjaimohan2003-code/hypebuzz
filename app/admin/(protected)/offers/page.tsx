@@ -6,8 +6,11 @@ import { OffersTable } from "@/components/admin/offer-table";
 import {
   getAdminOffers,
   parseMerchantFilter,
+  parseOfferAvailabilityFilter,
   parseOfferActiveFilter,
+  parseOfferHealthFilter,
 } from "@/lib/data/admin-offers";
+import { isOfferUuid } from "@/lib/validation/offer";
 
 export const metadata: Metadata = { title: "Offers | HypeBuzz Admin" };
 
@@ -15,9 +18,12 @@ type OffersSearchParams = Promise<{
   q?: string | string[];
   merchant?: string | string[];
   status?: string | string[];
+  product?: string | string[];
+  availability?: string | string[];
+  health?: string | string[];
   notice?: string | string[];
 }>;
-const notices: Record<string, string> = { created: "Offer created successfully.", updated: "Offer updated successfully.", disabled: "Offer disabled successfully." };
+const notices: Record<string, string> = { created: "Offer created successfully.", updated: "Offer updated successfully.", disabled: "Offer disabled successfully.", deleted: "Offer deleted successfully." };
 
 function getFirst(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -28,14 +34,21 @@ export default async function AdminOffersPage({ searchParams }: { searchParams: 
   const search = (getFirst(params.q) ?? "").trim().slice(0, 100);
   const merchantId = parseMerchantFilter(getFirst(params.merchant));
   const activeStatus = parseOfferActiveFilter(getFirst(params.status));
+  const productValue = getFirst(params.product);
+  const productId = productValue && isOfferUuid(productValue) ? productValue : "all";
+  const availability = parseOfferAvailabilityFilter(getFirst(params.availability));
+  const health = parseOfferHealthFilter(getFirst(params.health));
   const notice = notices[getFirst(params.notice) ?? ""];
-  const { offers, merchants, hasError } = await getAdminOffers({
+  const { offers, merchants, products, hasError } = await getAdminOffers({
     search,
     merchantId,
     activeStatus,
+    productId,
+    availability,
+    health,
   });
   const hasFilters = Boolean(
-    search || merchantId !== "all" || activeStatus !== "all",
+    search || merchantId !== "all" || activeStatus !== "all" || productId !== "all" || availability !== "all" || health !== "all",
   );
 
   return (
@@ -47,10 +60,13 @@ export default async function AdminOffersPage({ searchParams }: { searchParams: 
       {notice ? <div className="mt-6 rounded-[10px] border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#166534]" role="status">{notice}</div> : null}
       {hasError ? <div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">Offers could not be loaded. Check the Supabase connection and offer policies, then try again.</div> : null}
 
-      <form action="/admin/offers" className="mt-8 grid gap-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_1px_2px_rgba(17,24,39,0.04)] md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_14rem_12rem_auto_auto] xl:items-end" method="get" role="search">
+      <form action="/admin/offers" className="mt-8 grid gap-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_1px_2px_rgba(17,24,39,0.04)] md:grid-cols-2 xl:grid-cols-4 xl:items-end" method="get" role="search">
         <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-search">Search by product</label><div className="relative mt-2"><AdminIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#6B7280]" name="search" /><input className="h-11 w-full rounded-[10px] border border-[#D1D5DB] bg-white pl-10 pr-4 text-sm text-[#111827] outline-none placeholder:text-[#6B7280] hover:border-[#9CA3AF] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2" defaultValue={search} id="offer-search" maxLength={100} name="q" placeholder="Search products" type="search" /></div></div>
         <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-merchant-filter">Merchant</label><select className="mt-2 h-11 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none hover:border-[#9CA3AF] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2" defaultValue={merchantId} id="offer-merchant-filter" name="merchant"><option value="all">All merchants</option>{merchants.map((merchant) => <option key={merchant.id} value={merchant.id}>{merchant.name}</option>)}</select></div>
         <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-status-filter">Status</label><select className="mt-2 h-11 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-3 text-sm text-[#111827] outline-none hover:border-[#9CA3AF] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2" defaultValue={activeStatus} id="offer-status-filter" name="status"><option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+        <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-product-filter">Product</label><select className="mt-2 h-11 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-3 text-sm" defaultValue={productId} id="offer-product-filter" name="product"><option value="all">All products</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></div>
+        <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-availability-filter">Availability</label><select className="mt-2 h-11 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-3 text-sm" defaultValue={availability} id="offer-availability-filter" name="availability"><option value="all">All availability</option><option value="in_stock">In stock</option><option value="limited_stock">Limited stock</option><option value="pre_order">Pre-order</option><option value="out_of_stock">Out of stock</option><option value="unknown">Unknown</option></select></div>
+        <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-health-filter">Attention</label><select className="mt-2 h-11 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-3 text-sm" defaultValue={health} id="offer-health-filter" name="health"><option value="all">All offers</option><option value="missing_url">Missing affiliate URL</option><option value="stale">Stale (7+ days)</option></select></div>
         <button className="inline-flex min-h-11 items-center justify-center rounded-[10px] bg-[#2563EB] px-5 text-sm font-semibold text-white hover:bg-[#1D4ED8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" type="submit">Apply</button>
         <Link className="inline-flex min-h-11 items-center justify-center rounded-[10px] border border-[#D1D5DB] bg-white px-4 text-sm font-semibold text-[#111827] hover:bg-[#F8FAFC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" href="/admin/offers">Reset</Link>
       </form>

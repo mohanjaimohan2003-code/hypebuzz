@@ -4,6 +4,8 @@ import { cache } from "react";
 import type { ProductCardProduct } from "@/components/product/product-card";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/types/database";
+import { discountPercent, savingsAmount, sortPublicOffers } from "@/lib/offers/price-comparison";
+import { isDatabaseOfferEligibleForPublication, isDatabaseOfferPubliclyVisible } from "@/lib/offers/publication-contract";
 
 export type PublicProductOffer = {
   id: string;
@@ -14,7 +16,11 @@ export type PublicProductOffer = {
   lastCheckedAt: string | null;
   merchant: { name: string; slug: string; logoUrl: string | null };
   discount: number | null;
+  savings: number | null;
   isLowestPrice: boolean;
+  couponCode: string | null;
+  shippingNote: string | null;
+  offerTitle: string | null;
 };
 
 export type PublicProductDetail = {
@@ -23,6 +29,8 @@ export type PublicProductDetail = {
   slug: string;
   shortDescription: string | null;
   description: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
   imageUrl: string | null;
   images: Array<{ id: string; imageUrl: string; altText: string | null }>;
   specifications: Array<{ name: string; value: string }>;
@@ -32,6 +40,9 @@ export type PublicProductDetail = {
   offers: PublicProductOffer[];
   lowestPrice: number | null;
   highestDiscount: number | null;
+  highestPrice: number | null;
+  maximumSavings: number | null;
+  activeMerchantCount: number;
   currency: string;
   availability: string;
   updatedAt: string;
@@ -46,6 +57,9 @@ type ProductRow = {
   description: string | null;
   primary_image_url: string | null;
   specifications: Json;
+  highlights: Json;
+  seo_title: string | null;
+  seo_description: string | null;
   brand_id: string | null;
   category_id: string | null;
   updated_at: string;
@@ -58,7 +72,12 @@ type ProductRow = {
     currency: string;
     availability: string | null;
     last_checked_at: string | null;
-    merchant: { name: string; slug: string; logo_url: string | null } | null;
+    coupon_note: string | null;
+    shipping_note: string | null;
+    offer_title: string | null;
+    affiliate_url: string;
+    is_active: boolean;
+    merchant: { name: string; slug: string; logo_url: string | null; is_active: boolean } | null;
   }>;
 };
 
@@ -68,7 +87,11 @@ type RelatedRow = {
   slug: string;
   primary_image_url: string | null;
   brand: { name: string } | null;
-  product_offers: Array<{ current_price: number; currency: string; merchant_id: string }>;
+  product_offers: Array<{
+    current_price: number; original_price: number | null; currency: string;
+    merchant_id: string; affiliate_url: string; availability: string | null;
+    is_active: boolean; merchant: { is_active: boolean } | null;
+  }>;
 };
 
 const fallbackImage = "/products/aurora-headphones.svg";
@@ -81,12 +104,15 @@ function logProductQueryError(section: string, error: { code?: string; message?:
   });
 }
 
-function readProductContent(value: Json) {
+function readProductContent(highlightsValue: Json, value: Json) {
   if (!value || Array.isArray(value) || typeof value !== "object") {
-    return { features: [], specifications: [] };
+    return { features: Array.isArray(highlightsValue) ? highlightsValue.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [], specifications: [] };
   }
 
-  const features = Array.isArray(value.features)
+  const dedicatedHighlights = Array.isArray(highlightsValue)
+    ? highlightsValue.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+  const legacyFeatures = Array.isArray(value.features)
     ? value.features.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
     : [];
   const specifications = Object.entries(value)
@@ -96,12 +122,7 @@ function readProductContent(value: Json) {
       return [{ name, value: String(item) }];
     });
 
-  return { features, specifications };
-}
-
-function discountFor(currentPrice: number, originalPrice: number | null) {
-  if (!originalPrice || originalPrice <= currentPrice) return null;
-  return ((originalPrice - currentPrice) / originalPrice) * 100;
+  return { features: dedicatedHighlights.length ? dedicatedHighlights : legacyFeatures, specifications };
 }
 
 function isInStock(availability: string | null) {
@@ -114,7 +135,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, name, slug, short_description, description, primary_image_url, specifications, brand_id, category_id, updated_at, brand:brands(name, slug), category:categories(name, slug), product_offers(id, current_price, original_price, currency, availability, last_checked_at, merchant:merchants(name, slug, logo_url))")
+    .select("id, name, slug, short_description, description, highlights, specifications, seo_title, seo_description, primary_image_url, brand_id, category_id, updated_at, brand:brands(name, slug), category:categories!inner(name, slug), product_offers(id, current_price, original_price, currency, availability, affiliate_url, is_active, last_checked_at, coupon_note, shipping_note, offer_title, merchant:merchants(name, slug, logo_url, is_active))")
     .eq("slug", slug)
     .eq("status", "published")
     .maybeSingle();
@@ -122,12 +143,14 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
   logProductQueryError("product", error);
   if (error || !data) return null;
   const product = data as unknown as ProductRow;
+  if (!product.category) return null;
   const imageResult = await supabase.from("product_images").select("id, image_url, alt_text, is_primary, sort_order").eq("product_id",product.id).order("is_primary",{ascending:false}).order("sort_order").returns<Array<{id:string;image_url:string;alt_text:string|null;is_primary:boolean;sort_order:number}>>();
-  const validOffers = product.product_offers.filter((offer) => offer.merchant);
-  const lowestPrice = validOffers.length
-    ? Math.min(...validOffers.map((offer) => Number(offer.current_price)))
+  const validOffers = product.product_offers.filter(isDatabaseOfferPubliclyVisible);
+  const eligibleOfferRows = validOffers.filter(isDatabaseOfferEligibleForPublication);
+  const lowestPrice = eligibleOfferRows.length
+    ? Math.min(...eligibleOfferRows.map((offer) => Number(offer.current_price)))
     : null;
-  const offers = validOffers
+  const offers = sortPublicOffers(validOffers
     .map((offer): PublicProductOffer => {
       const currentPrice = Number(offer.current_price);
       const originalPrice = offer.original_price === null ? null : Number(offer.original_price);
@@ -143,17 +166,20 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
           slug: offer.merchant!.slug,
           logoUrl: offer.merchant!.logo_url,
         },
-        discount: discountFor(currentPrice, originalPrice),
-        isLowestPrice: currentPrice === lowestPrice,
+        discount: discountPercent(currentPrice, originalPrice),
+        savings: savingsAmount(currentPrice, originalPrice),
+        isLowestPrice: isDatabaseOfferEligibleForPublication(offer) && currentPrice === lowestPrice,
+        couponCode: offer.coupon_note,
+        shippingNote: offer.shipping_note,
+        offerTitle: offer.offer_title,
       };
-    })
-    .sort((a, b) => a.currentPrice - b.currentPrice);
+    }));
 
   let relatedProducts: ProductCardProduct[] = [];
   if (product.category_id || product.brand_id) {
     let relatedQuery = supabase
       .from("products")
-      .select("id, name, slug, primary_image_url, brand:brands(name), product_offers(current_price, currency, merchant_id)")
+      .select("id, name, slug, primary_image_url, brand:brands(name), category:categories!inner(id), product_offers(current_price, original_price, currency, merchant_id, affiliate_url, availability, is_active, merchant:merchants(is_active))")
       .neq("id", product.id)
       .eq("status", "published")
       .limit(8);
@@ -167,8 +193,9 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     if (!relatedResult.error) {
       relatedProducts = ((relatedResult.data ?? []) as unknown as RelatedRow[])
         .flatMap((related) => {
-          if (!related.product_offers.length) return [];
-          const cheapest = [...related.product_offers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];
+          const eligibleOffers = related.product_offers.filter(isDatabaseOfferEligibleForPublication);
+          if (!eligibleOffers.length) return [];
+          const cheapest = [...eligibleOffers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];
           return [{
             id: related.id,
             name: related.name,
@@ -177,16 +204,16 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
             imageAlt: related.name,
             price: Number(cheapest.current_price),
             currency: cheapest.currency,
-            storeCount: new Set(related.product_offers.map((offer) => offer.merchant_id)).size,
+            storeCount: new Set(eligibleOffers.map((offer) => offer.merchant_id)).size,
             productHref: `/products/${related.slug}`,
-            dealsHref: `/products/${related.slug}#deals`,
+            dealsHref: `/products/${related.slug}#compare-prices`,
           }];
         })
         .slice(0, 4);
     }
   }
 
-  const content = readProductContent(product.specifications);
+  const content = readProductContent(product.highlights, product.specifications);
   const highestDiscount = offers.reduce<number | null>(
     (highest, offer) => offer.discount === null ? highest : Math.max(highest ?? 0, offer.discount),
     null,
@@ -198,6 +225,8 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     slug: product.slug,
     shortDescription: product.short_description,
     description: product.description,
+    seoTitle: product.seo_title,
+    seoDescription: product.seo_description,
     imageUrl: product.primary_image_url,
     images: imageResult.error ? (product.primary_image_url ? [{id:"primary",imageUrl:product.primary_image_url,altText:product.name}]:[]) : (imageResult.data??[]).map(image=>({id:image.id,imageUrl:image.image_url,altText:image.alt_text})),
     specifications: content.specifications,
@@ -207,6 +236,9 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     offers,
     lowestPrice,
     highestDiscount,
+    highestPrice: offers.length ? Math.max(...offers.map((offer) => offer.currentPrice)) : null,
+    maximumSavings: offers.reduce<number | null>((maximum, offer) => offer.savings === null ? maximum : Math.max(maximum ?? 0, offer.savings), null),
+    activeMerchantCount: new Set(offers.map((offer) => offer.merchant.slug)).size,
     currency: offers[0]?.currency ?? "INR",
     availability: offers.some((offer) => isInStock(offer.availability))
       ? "Available"

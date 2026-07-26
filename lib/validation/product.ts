@@ -1,12 +1,20 @@
 import type { ProductStatus } from "@/lib/types/database";
+import { isOfferUuid, type OfferStockStatus } from "@/lib/validation/offer";
+import {
+  isOfferEligibleForPublication,
+  publicationErrorMessages,
+  validateOfferContract,
+} from "@/lib/offers/publication-contract";
+import { parseProductRichFields, type ProductRichFields } from "@/lib/products/rich-fields";
 
 export type EditableProductStatus = Exclude<ProductStatus, "archived">;
 
-export type ProductFormValues = {
+export type ProductFormValues = ProductRichFields & {
   name: string;
   slug: string;
   shortDescription: string;
   categoryId: string;
+  brandId: string;
   imageUrl: string;
   imageManifest: ProductImageManifestItem[];
   isFeatured: boolean;
@@ -17,16 +25,24 @@ export type ProductFormValues = {
   currentPrice: number | null;
   originalPrice: number | null;
   currency: string;
-  stockStatus: "in_stock" | "limited_stock" | "out_of_stock";
+  stockStatus: OfferStockStatus;
   offerIsActive: boolean;
+  offers: ProductOfferManifestItem[];
 };
+export type ProductOfferManifestItem = { id: string; persisted?: boolean; merchantId: string; affiliateUrl: string; currentPrice: number | null; originalPrice: number | null; currency: string; stockStatus: OfferStockStatus; isActive: boolean; couponCode: string; shippingNote: string; offerTitle: string; lastCheckedAt: string };
 export type ProductImageManifestItem = { kind: "existing" | "external" | "upload"; id?: string; url?: string; fileIndex?: number; isPrimary: boolean };
 
 export type ProductField =
   | "name"
   | "slug"
   | "shortDescription"
+  | "longDescription"
+  | "highlights"
+  | "specifications"
+  | "seoTitle"
+  | "seoDescription"
   | "categoryId"
+  | "brandId"
   | "imageUrl"
   | "status"
   | "merchantId"
@@ -35,7 +51,8 @@ export type ProductField =
   | "originalPrice"
   | "currency"
   | "stockStatus"
-  | "offerIsActive";
+  | "offerIsActive"
+  | "offerList";
 
 export type ProductFieldErrors = Partial<Record<ProductField, string>>;
 
@@ -84,11 +101,15 @@ export function validateProductForm(formData: FormData):
   const stockStatus = getString(formData, "stockStatus") as ProductFormValues["stockStatus"];
   let imageManifest: ProductImageManifestItem[] = [];
   try { const parsed = JSON.parse(getString(formData, "imageManifest") || "[]") as unknown; if (!Array.isArray(parsed)) throw new Error(); imageManifest = parsed as ProductImageManifestItem[]; } catch { imageManifest = []; }
+  let offers: ProductOfferManifestItem[] = [];
+  try { const parsed = JSON.parse(getString(formData, "offerManifest") || "[]") as unknown; if (!Array.isArray(parsed)) throw new Error(); offers = parsed as ProductOfferManifestItem[]; } catch { offers = []; }
+  const richFields = parseProductRichFields(formData);
   const values: ProductFormValues = {
     name: getString(formData, "name"),
     slug: getString(formData, "slug").toLowerCase(),
     shortDescription: getString(formData, "shortDescription"),
     categoryId: getString(formData, "categoryId"),
+    brandId: getString(formData, "brandId"),
     imageUrl: "",
     imageManifest,
     isFeatured: formData.get("isFeatured") === "on",
@@ -101,8 +122,10 @@ export function validateProductForm(formData: FormData):
     currency: getString(formData, "currency").toUpperCase(),
     stockStatus,
     offerIsActive: formData.get("offerIsActive") === "on",
+    offers,
+    ...richFields.values,
   };
-  const fieldErrors: ProductFieldErrors = {};
+  const fieldErrors: ProductFieldErrors = { ...richFields.errors };
 
   if (values.name.length < 2 || values.name.length > 160) {
     fieldErrors.name = "Enter a product name between 2 and 160 characters.";
@@ -117,13 +140,19 @@ export function validateProductForm(formData: FormData):
   }
 
   if (!isUuid(values.categoryId)) {
-    fieldErrors.categoryId = "Select a valid category.";
+    fieldErrors.categoryId = "Please select a category.";
+  }
+
+  if (values.brandId && !isUuid(values.brandId)) {
+    fieldErrors.brandId = "Select a valid brand.";
   }
 
   const files = formData.getAll("uploadedImages").filter((value): value is File => value instanceof File && value.size > 0);
   if (imageManifest.length > 8) fieldErrors.imageUrl = "You can upload up to 8 product images.";
-  else if (imageManifest.filter(x => x.isPrimary).length > 1) fieldErrors.imageUrl = "Choose only one primary image.";
+  else if (imageManifest.some((image) => !image || typeof image !== "object" || !["existing", "external", "upload"].includes(image.kind))) fieldErrors.imageUrl = "The product image list is invalid.";
+  else if (imageManifest.length > 0 && imageManifest.filter((image) => image.isPrimary === true).length !== 1) fieldErrors.imageUrl = "Choose exactly one primary image.";
   else for (const image of imageManifest) {
+    if (typeof image.isPrimary !== "boolean") { fieldErrors.imageUrl = "The product image list is invalid."; break; }
     if (image.kind === "existing" && (!image.id || !isUuid(image.id))) { fieldErrors.imageUrl = "An existing image selection is invalid."; break; }
     if (image.kind === "external") { try { const parsed = new URL(image.url ?? ""); if (!["http:","https:"].includes(parsed.protocol) || (image.url?.length ?? 0) > 2048) throw new Error(); } catch { fieldErrors.imageUrl = "Enter complete HTTP or HTTPS image URLs."; break; } }
     if (image.kind === "upload" && (!Number.isInteger(image.fileIndex) || (image.fileIndex ?? -1) < 0 || !files[image.fileIndex!])) { fieldErrors.imageUrl = "A selected upload is missing. Choose it again."; break; }
@@ -135,24 +164,35 @@ export function validateProductForm(formData: FormData):
     fieldErrors.status = "Select Draft or Published.";
   }
 
-  const hasOfferInput = Boolean(values.merchantId || values.affiliateUrl || currentPriceInput || originalPriceInput);
-  if (values.status === "published" || hasOfferInput) {
-    if (!isUuid(values.merchantId)) fieldErrors.merchantId = "Select an active merchant.";
-    try {
-      const url = new URL(values.affiliateUrl);
-      if (!['http:', 'https:'].includes(url.protocol) || values.affiliateUrl.length > 2048) throw new Error();
-    } catch {
-      fieldErrors.affiliateUrl = "Enter a complete HTTP or HTTPS affiliate URL.";
-    }
-    if (currentPrice === null || currentPrice <= 0) fieldErrors.currentPrice = "Enter a current price greater than zero.";
-    if (originalPrice === null || originalPrice <= 0) fieldErrors.originalPrice = "Enter an original price greater than zero.";
-    else if (currentPrice !== null && originalPrice < currentPrice) fieldErrors.originalPrice = "Original price cannot be lower than current price.";
-    if (!/^[A-Z]{3}$/.test(values.currency)) fieldErrors.currency = "Use a three-letter currency code such as INR.";
-    if (!["in_stock", "limited_stock", "out_of_stock"].includes(stockStatus)) fieldErrors.stockStatus = "Select a valid stock status.";
+  const usedMerchants = new Set<string>();
+  for (const [index, offer] of offers.entries()) {
+    const label = `Offer ${index + 1}`;
+    if (!offer || !isOfferUuid(offer.id) || !isOfferUuid(offer.merchantId)) { fieldErrors.offerList = `${label}: select a valid merchant.`; break; }
+    const contractError = validateOfferContract({
+      affiliateUrl: offer.affiliateUrl,
+      currentPrice: offer.currentPrice,
+      originalPrice: offer.originalPrice,
+      currency: offer.currency,
+      availability: offer.stockStatus,
+      isActive: false,
+      merchantIsActive: true,
+    })[0];
+    if (contractError) { fieldErrors.offerList = `${label}: ${publicationErrorMessages[contractError]}`; break; }
+    if (offer.couponCode.length > 100 || offer.shippingNote.length > 300 || offer.offerTitle.length > 160) { fieldErrors.offerList = `${label}: optional offer details are too long.`; break; }
+    if (offer.lastCheckedAt && Number.isNaN(new Date(offer.lastCheckedAt).getTime())) { fieldErrors.offerList = `${label}: enter a valid last checked date.`; break; }
+    if (usedMerchants.has(offer.merchantId)) { fieldErrors.offerList = "This project supports only one offer per product and merchant."; break; }
+    usedMerchants.add(offer.merchantId);
   }
-  if (values.status === "published" && !values.offerIsActive) {
-    fieldErrors.offerIsActive = "A published product requires an active offer.";
-  }
+  if (values.status === "published" && !offers.some((offer) => isOfferEligibleForPublication({
+    affiliateUrl: offer.affiliateUrl,
+    currentPrice: offer.currentPrice,
+    originalPrice: offer.originalPrice,
+    currency: offer.currency,
+    availability: offer.stockStatus,
+    isActive: offer.isActive,
+    // The Server Action re-reads merchant activity before saving.
+    merchantIsActive: true,
+  }))) fieldErrors.offerList = publicationErrorMessages.PRODUCT_OFFER_REQUIRED;
 
   if (Object.keys(fieldErrors).length > 0) {
     return {

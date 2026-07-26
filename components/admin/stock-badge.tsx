@@ -16,6 +16,16 @@ const stockStyles: Record<OfferStockStatus, { label: string; className: string; 
     className: "border-[#FECACA] bg-[#FEF2F2] text-[#991B1B]",
     dot: "bg-[#DC2626]",
   },
+  pre_order: {
+    label: "Pre-order",
+    className: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]",
+    dot: "bg-[#2563EB]",
+  },
+  unknown: {
+    label: "Unknown",
+    className: "border-[#D1D5DB] bg-[#F3F4F6] text-[#4B5563]",
+    dot: "bg-[#9CA3AF]",
+  },
 };
 
 export function StockBadge({ status }: { status: OfferStockStatus | null }) {

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AdminEmptyState } from "@/components/admin/admin-empty-state";
 import { ProductForm } from "@/components/admin/product-form";
 import { getAdminProductEditorData } from "@/lib/data/admin-products";
+import { normalizeHighlights, normalizeSpecifications } from "@/lib/products/rich-fields";
 
 export const metadata: Metadata = { title: "Edit Product | HypeBuzz Admin" };
 
@@ -13,7 +14,7 @@ export default async function EditProductPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const { product, categories, merchants, offer, images, hasError } = await getAdminProductEditorData(productId);
+  const { product, categories, brands, merchants, offer, offers, images, hasError } = await getAdminProductEditorData(productId);
 
   if (!product && !hasError) notFound();
 
@@ -46,6 +47,7 @@ export default async function EditProductPage({
       ) : null}
 
       <ProductForm
+        brands={brands}
         categories={categories}
         merchants={merchants}
         mode="edit"
@@ -54,7 +56,13 @@ export default async function EditProductPage({
           name: product.name,
           slug: product.slug,
           shortDescription: product.short_description ?? "",
+          longDescription: product.description ?? "",
+          highlights: normalizeHighlights(product.highlights).value,
+          specifications: normalizeSpecifications(product.specifications).value,
+          seoTitle: product.seo_title ?? "",
+          seoDescription: product.seo_description ?? "",
           categoryId: product.category_id ?? "",
+          brandId: product.brand_id ?? "",
           imageUrl: product.primary_image_url ?? "",
           images,
           isFeatured: product.is_featured,
@@ -68,6 +76,7 @@ export default async function EditProductPage({
           currency: offer?.currency ?? "INR",
           stockStatus: offer?.availability === "limited_stock" || offer?.availability === "out_of_stock" ? offer.availability : "in_stock",
           offerIsActive: offer?.is_active ?? true,
+          offers: offers.map((item) => ({ id: item.id, persisted: true, merchantId: item.merchant_id, affiliateUrl: item.affiliate_url, currentPrice: Number(item.current_price), originalPrice: item.original_price === null ? null : Number(item.original_price), currency: item.currency, stockStatus: item.availability === "limited_stock" || item.availability === "out_of_stock" || item.availability === "pre_order" || item.availability === "unknown" ? item.availability : "in_stock", isActive: item.is_active, couponCode: item.coupon_note ?? "", shippingNote: item.shipping_note ?? "", offerTitle: item.offer_title ?? "", lastCheckedAt: item.last_checked_at ? new Date(item.last_checked_at).toISOString().slice(0, 16) : "" })),
         }}
       />
     </div>

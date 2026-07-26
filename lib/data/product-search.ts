@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import type { ProductCardProduct } from "@/components/product/product-card";
 import type { ProductSearchParams } from "@/lib/validation/product-search";
+import { isDatabaseOfferEligibleForPublication, isDatabaseOfferPubliclyVisible } from "@/lib/offers/publication-contract";
 
 export type SearchFilterOption = { name: string; slug: string };
 export type ProductSearchResult = {
@@ -27,7 +28,9 @@ type SearchRow = {
     currency: string;
     availability: string | null;
     merchant_id: string;
-    merchant: { name: string; slug: string } | null;
+    affiliate_url: string;
+    is_active: boolean;
+    merchant: { name: string; slug: string; is_active: boolean } | null;
   }>;
 };
 type OptionRow = SearchFilterOption;
@@ -51,7 +54,7 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
   const [productsResult, categoriesResult, brandsResult, merchantsResult] = await Promise.all([
     supabase
       .from("products")
-      .select("id, name, slug, primary_image_url, created_at, category:categories(slug), brand:brands(name, slug), product_offers(current_price, original_price, currency, availability, merchant_id, merchant:merchants(name, slug))")
+      .select("id, name, slug, primary_image_url, created_at, category:categories!inner(slug), brand:brands(name, slug), product_offers(current_price, original_price, currency, availability, affiliate_url, is_active, merchant_id, merchant:merchants(name, slug, is_active))")
       .eq("status", "published")
       .order("created_at", { ascending: false })
       .limit(100),
@@ -68,9 +71,11 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
   const query = filters.q.toLowerCase();
   const availability = filters.availability?.toLowerCase().replaceAll(" ", "_") ?? null;
   const matches = ((productsResult.data ?? []) as unknown as SearchRow[]).flatMap((product) => {
-    const offers = product.product_offers;
-    const cheapest = [...offers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];
-    const biggestDiscount = offers.reduce<number | null>((biggest, offer) => {
+    if (!product.category) return [];
+    const offers = product.product_offers.filter(isDatabaseOfferPubliclyVisible);
+    const eligibleOffers = offers.filter(isDatabaseOfferEligibleForPublication);
+    const cheapest = [...eligibleOffers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];
+    const biggestDiscount = eligibleOffers.reduce<number | null>((biggest, offer) => {
       const current = Number(offer.current_price);
       const original = offer.original_price === null ? null : Number(offer.original_price);
       return original && original > current
@@ -89,7 +94,7 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
       (filters.minDiscount === null || (biggestDiscount ?? 0) >= filters.minDiscount) &&
       (!availability || offers.some((offer) => offer.availability?.toLowerCase().replaceAll(" ", "_") === availability)) &&
       (!filters.bestPriceOnly || new Set(offers.map((offer) => offer.merchant_id)).size > 1);
-    return visible ? [{ product, cheapest, biggestDiscount }] : [];
+    return visible ? [{ product, cheapest, biggestDiscount, eligibleOffers }] : [];
   });
 
   matches.sort((left, right) => {
@@ -101,7 +106,7 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
   });
 
   return {
-    products: productsResult.error ? [] : matches.slice(0, 48).map(({ product, cheapest, biggestDiscount }) => ({
+    products: productsResult.error ? [] : matches.slice(0, 48).map(({ product, cheapest, biggestDiscount, eligibleOffers }) => ({
       id: product.id,
       name: product.name,
       brand: product.brand?.name ?? "Independent brand",
@@ -109,9 +114,9 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
       imageAlt: product.name,
       price: cheapest ? Number(cheapest.current_price) : undefined,
       currency: cheapest?.currency,
-      storeCount: new Set(product.product_offers.map((offer) => offer.merchant_id)).size,
+      storeCount: new Set(eligibleOffers.map((offer) => offer.merchant_id)).size,
       productHref: `/products/${product.slug}`,
-      dealsHref: `/products/${product.slug}#deals`,
+      dealsHref: `/products/${product.slug}#compare-prices`,
       badge: biggestDiscount && biggestDiscount > 0 ? `${Math.round(biggestDiscount)}% off` : undefined,
     })),
     categories: categoriesResult.error ? [] : (categoriesResult.data ?? []),

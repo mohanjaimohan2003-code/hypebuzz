@@ -1,26 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import {
   createProduct,
   updateProduct,
 } from "@/app/admin/(protected)/products/actions";
-import type { AdminCategoryOption, AdminMerchantOption } from "@/lib/data/admin-products";
+import type { AdminBrandOption, AdminCategoryOption, AdminMerchantOption } from "@/lib/data/admin-products";
 import type { ProductStatus } from "@/lib/types/database";
+import type { ProductImportApplication } from "@/lib/admin/product-import/types";
 import {
   createProductSlug,
   initialProductActionState,
   type ProductField,
 } from "@/lib/validation/product";
 import { ProductImagesField, type ProductImageValue } from "./product-images-field";
+import { ProductJsonImporter } from "./product-json-importer";
+import { ProductOffersField, type ProductOffersFieldHandle, type ProductOfferValue } from "./product-offers-field";
+import { ProductHighlightsField } from "./product-highlights-field";
+import { ProductSpecificationsField, specificationsToRows, type SpecificationRow } from "./product-specifications-field";
 
 export type ProductFormInitialProduct = {
   id: string;
   name: string;
   slug: string;
   shortDescription: string;
+  longDescription: string;
+  highlights: string[];
+  specifications: Record<string, string>;
+  seoTitle: string;
+  seoDescription: string;
   categoryId: string;
+  brandId: string;
   imageUrl: string;
   images: ProductImageValue[];
   isFeatured: boolean;
@@ -34,11 +45,13 @@ export type ProductFormInitialProduct = {
   currency: string;
   stockStatus: "in_stock" | "limited_stock" | "out_of_stock";
   offerIsActive: boolean;
+  offers: ProductOfferValue[];
 };
 
 type ProductFormProps = {
   mode: "create" | "edit";
   categories: AdminCategoryOption[];
+  brands: AdminBrandOption[];
   merchants: AdminMerchantOption[];
   product?: ProductFormInitialProduct;
 };
@@ -49,10 +62,23 @@ function FieldError({ field, error }: { field: ProductField; error?: string }) {
   return error ? <p className="mt-2 text-sm font-medium text-[#B91C1C]" id={`${field}-error`}>{error}</p> : null;
 }
 
-export function ProductForm({ mode, categories, merchants, product }: ProductFormProps) {
+export function ProductForm({ mode, categories, brands, merchants, product }: ProductFormProps) {
   const [name, setName] = useState(product?.name ?? "");
   const [slug, setSlug] = useState(product?.slug ?? "");
+  const [shortDescription, setShortDescription] = useState(product?.shortDescription ?? "");
+  const [longDescription, setLongDescription] = useState(product?.longDescription ?? "");
+  const [highlights, setHighlights] = useState(product?.highlights ?? []);
+  const [specificationRows, setSpecificationRows] = useState<SpecificationRow[]>(specificationsToRows(product?.specifications ?? {}));
+  const [seoTitle, setSeoTitle] = useState(product?.seoTitle ?? "");
+  const [seoDescription, setSeoDescription] = useState(product?.seoDescription ?? "");
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
+  const [brandId, setBrandId] = useState(product?.brandId ?? "");
+  const [status, setStatus] = useState<"draft" | "published">(product?.status === "published" ? "published" : "draft");
+  const [isFeatured, setIsFeatured] = useState(product?.isFeatured ?? false);
+  const [isTrending, setIsTrending] = useState(product?.isTrending ?? false);
   const [slugWasEdited, setSlugWasEdited] = useState(mode === "edit");
+  const detailsRef = useRef<HTMLFieldSetElement>(null);
+  const offersRef = useRef<ProductOffersFieldHandle>(null);
   const action = mode === "create" ? createProduct : updateProduct.bind(null, product?.id ?? "");
   const [state, formAction, isPending] = useActionState(action, initialProductActionState);
 
@@ -61,9 +87,26 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
     return [hintId, errorId].filter(Boolean).join(" ") || undefined;
   }
 
+  function applyImport(imported: ProductImportApplication) {
+    if (imported.productName !== undefined) setName(imported.productName);
+    if (imported.slug !== undefined) { setSlug(imported.slug); setSlugWasEdited(true); }
+    if (imported.shortDescription !== undefined) setShortDescription(imported.shortDescription);
+    if (imported.longDescription !== undefined) setLongDescription(imported.longDescription);
+    if (imported.highlights !== undefined) setHighlights(imported.highlights);
+    if (imported.specifications !== undefined) setSpecificationRows(specificationsToRows(imported.specifications));
+    if (imported.seoTitle !== undefined) setSeoTitle(imported.seoTitle);
+    if (imported.seoDescription !== undefined) setSeoDescription(imported.seoDescription);
+    if (imported.categoryId !== undefined) setCategoryId(imported.categoryId);
+    if (imported.brandId !== undefined) setBrandId(imported.brandId);
+    setStatus(imported.status);
+    if (imported.featuredProduct !== undefined) setIsFeatured(imported.featuredProduct);
+    if (imported.trendingProduct !== undefined) setIsTrending(imported.trendingProduct);
+    if (imported.offer) offersRef.current?.applyImport(imported.offer);
+    requestAnimationFrame(() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
   return (
     <form action={formAction} className="mt-8 space-y-8">
-      <input name="offerId" type="hidden" value={product?.offerId ?? ""} />
       {product?.status === "archived" ? (
         <div className="rounded-[10px] border border-[#D1D5DB] bg-[#F3F4F6] px-4 py-3 text-sm text-[#374151]">
           This product is archived. Saving it as Draft or Published will reactivate it.
@@ -76,7 +119,11 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
         </div>
       ) : null}
 
-      <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6">
+      {mode === "create" ? (
+        <ProductJsonImporter brands={brands} categories={categories} merchants={merchants} onApply={applyImport} />
+      ) : null}
+
+      <fieldset className="scroll-mt-24 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6" ref={detailsRef}>
         <legend className="px-1 text-lg font-bold text-[#111827]">Product details</legend>
         <div className="mt-2 grid gap-6 lg:grid-cols-2">
           <div>
@@ -129,11 +176,12 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
               aria-describedby={describedBy("shortDescription", "description-hint")}
               aria-invalid={Boolean(state.fieldErrors.shortDescription)}
               className={`${inputClass} min-h-28 py-3`}
-              defaultValue={product?.shortDescription ?? ""}
               disabled={isPending}
               id="product-description"
               maxLength={300}
               name="shortDescription"
+              onChange={(event) => setShortDescription(event.target.value)}
+              value={shortDescription}
             />
             <p className="mt-2 text-xs text-[#6B7280]" id="description-hint">Optional, up to 300 characters.</p>
             <FieldError error={state.fieldErrors.shortDescription} field="shortDescription" />
@@ -145,11 +193,12 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
               aria-describedby={describedBy("categoryId")}
               aria-invalid={Boolean(state.fieldErrors.categoryId)}
               className={inputClass}
-              defaultValue={product?.categoryId ?? ""}
               disabled={isPending || categories.length === 0}
               id="product-category"
               name="categoryId"
+              onChange={(event) => setCategoryId(event.target.value)}
               required
+              value={categoryId}
             >
               <option value="">Select a category</option>
               {categories.map((category) => (
@@ -161,54 +210,43 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
             <FieldError error={state.fieldErrors.categoryId} field="categoryId" />
           </div>
 
+          <div>
+            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-brand">Brand</label>
+            <select aria-describedby={describedBy("brandId")} aria-invalid={Boolean(state.fieldErrors.brandId)} className={inputClass} disabled={isPending} id="product-brand" name="brandId" onChange={(event) => setBrandId(event.target.value)} value={brandId}>
+              <option value="">No brand</option>
+              {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}{brand.isActive ? "" : " (inactive)"}</option>)}
+            </select>
+            <FieldError error={state.fieldErrors.brandId} field="brandId" />
+          </div>
+
         </div>
       </fieldset>
+
+      <details className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)]" open>
+        <summary className="min-h-14 cursor-pointer px-5 py-4 text-lg font-bold text-[#111827] sm:px-6">Rich product content</summary>
+        <div className="space-y-7 border-t border-[#E5E7EB] p-5 sm:p-6">
+          <div>
+            <label className="text-sm font-semibold" htmlFor="product-long-description">Long Description</label>
+            <textarea className={`${inputClass} min-h-40 py-3`} disabled={isPending} id="product-long-description" maxLength={10000} name="longDescription" onChange={(event) => setLongDescription(event.target.value)} value={longDescription} />
+            <div className="mt-2 flex justify-between gap-3 text-xs text-[#6B7280]"><span>Plain text only.</span><span>{longDescription.length.toLocaleString()} / 10,000</span></div>
+            <FieldError error={state.fieldErrors.longDescription} field="longDescription" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">Highlights</h3>
+            <input name="highlightsManifest" type="hidden" value={JSON.stringify(highlights)} />
+            <div className="mt-3"><ProductHighlightsField disabled={isPending} error={state.fieldErrors.highlights} onChange={setHighlights} values={highlights} /></div>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold">Specifications</h3>
+            <input name="specificationsManifest" type="hidden" value={JSON.stringify(specificationRows.map(({ label, value }) => ({ label, value })))} />
+            <div className="mt-3"><ProductSpecificationsField disabled={isPending} error={state.fieldErrors.specifications} onChange={setSpecificationRows} rows={specificationRows} /></div>
+          </div>
+        </div>
+      </details>
 
       <ProductImagesField disabled={isPending} error={state.fieldErrors.imageUrl} initialImages={product?.images ?? []} />
 
-      <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6">
-        <legend className="px-1 text-lg font-bold text-[#111827]">Primary storefront offer</legend>
-        <p className="mt-2 text-sm text-[#6B7280]">A complete, active offer is required before this product can be published.</p>
-        <div className="mt-5 grid gap-6 lg:grid-cols-2">
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-merchant">Merchant</label>
-            <select aria-invalid={Boolean(state.fieldErrors.merchantId)} className={inputClass} defaultValue={product?.merchantId ?? ""} disabled={isPending} id="product-merchant" name="merchantId">
-              <option value="">Select a merchant</option>
-              {merchants.map((merchant) => <option disabled={!merchant.isActive} key={merchant.id} value={merchant.id}>{merchant.name}{merchant.isActive ? "" : " (inactive)"}</option>)}
-            </select>
-            <FieldError error={state.fieldErrors.merchantId} field="merchantId" />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-affiliate-url">Affiliate URL</label>
-            <input aria-invalid={Boolean(state.fieldErrors.affiliateUrl)} className={inputClass} defaultValue={product?.affiliateUrl ?? ""} disabled={isPending} id="product-affiliate-url" maxLength={2048} name="affiliateUrl" placeholder="https://merchant.example/product" type="url" />
-            <FieldError error={state.fieldErrors.affiliateUrl} field="affiliateUrl" />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-current-price">Current price</label>
-            <input aria-invalid={Boolean(state.fieldErrors.currentPrice)} className={inputClass} defaultValue={product?.currentPrice ?? ""} disabled={isPending} id="product-current-price" min="0.01" name="currentPrice" step="0.01" type="number" />
-            <FieldError error={state.fieldErrors.currentPrice} field="currentPrice" />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-original-price">Original price</label>
-            <input aria-invalid={Boolean(state.fieldErrors.originalPrice)} className={inputClass} defaultValue={product?.originalPrice ?? ""} disabled={isPending} id="product-original-price" min="0.01" name="originalPrice" step="0.01" type="number" />
-            <FieldError error={state.fieldErrors.originalPrice} field="originalPrice" />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-currency">Currency</label>
-            <input aria-invalid={Boolean(state.fieldErrors.currency)} className={inputClass} defaultValue={product?.currency ?? "INR"} disabled={isPending} id="product-currency" maxLength={3} name="currency" />
-            <FieldError error={state.fieldErrors.currency} field="currency" />
-          </div>
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="product-stock-status">Stock status</label>
-            <select aria-invalid={Boolean(state.fieldErrors.stockStatus)} className={inputClass} defaultValue={product?.stockStatus ?? "in_stock"} disabled={isPending} id="product-stock-status" name="stockStatus"><option value="in_stock">In Stock</option><option value="limited_stock">Limited Stock</option><option value="out_of_stock">Out of Stock</option></select>
-            <FieldError error={state.fieldErrors.stockStatus} field="stockStatus" />
-          </div>
-          <label className="flex min-h-12 items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-4 py-3 text-sm font-semibold text-[#111827] lg:col-span-2">
-            <input className="h-5 w-5 accent-[#2563EB]" defaultChecked={product?.offerIsActive ?? true} disabled={isPending} name="offerIsActive" type="checkbox" /> Active offer
-          </label>
-          <FieldError error={state.fieldErrors.offerIsActive} field="offerIsActive" />
-        </div>
-      </fieldset>
+      <ProductOffersField disabled={isPending} error={state.fieldErrors.offerList} initialOffers={product?.offers ?? []} merchants={merchants} ref={offersRef} />
 
       <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6">
         <legend className="px-1 text-lg font-bold text-[#111827]">Publishing</legend>
@@ -219,11 +257,12 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
               aria-describedby={describedBy("status")}
               aria-invalid={Boolean(state.fieldErrors.status)}
               className={inputClass}
-              defaultValue={product?.status === "published" ? "published" : "draft"}
               disabled={isPending}
               id="product-status"
               name="status"
+              onChange={(event) => setStatus(event.target.value as "draft" | "published")}
               required
+              value={status}
             >
               <option value="draft">Draft</option>
               <option value="published">Published</option>
@@ -233,16 +272,34 @@ export function ProductForm({ mode, categories, merchants, product }: ProductFor
 
           <div className="space-y-3">
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#111827] hover:bg-[#F8FAFC]">
-              <input className="h-5 w-5 accent-[#2563EB]" defaultChecked={product?.isFeatured} disabled={isPending} name="isFeatured" type="checkbox" />
+              <input checked={isFeatured} className="h-5 w-5 accent-[#2563EB]" disabled={isPending} name="isFeatured" onChange={(event) => setIsFeatured(event.target.checked)} type="checkbox" />
               Featured product
             </label>
             <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[10px] border border-[#E5E7EB] px-4 py-2 text-sm font-semibold text-[#111827] hover:bg-[#F8FAFC]">
-              <input className="h-5 w-5 accent-[#2563EB]" defaultChecked={product?.isTrending} disabled={isPending} name="isTrending" type="checkbox" />
+              <input checked={isTrending} className="h-5 w-5 accent-[#2563EB]" disabled={isPending} name="isTrending" onChange={(event) => setIsTrending(event.target.checked)} type="checkbox" />
               Trending product
             </label>
           </div>
         </div>
       </fieldset>
+
+      <details className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)]">
+        <summary className="min-h-14 cursor-pointer px-5 py-4 text-lg font-bold text-[#111827] sm:px-6">Search appearance</summary>
+        <div className="grid gap-6 border-t border-[#E5E7EB] p-5 sm:p-6 lg:grid-cols-2">
+          <div>
+            <label className="text-sm font-semibold" htmlFor="product-seo-title">SEO Title</label>
+            <input className={inputClass} disabled={isPending} id="product-seo-title" maxLength={200} name="seoTitle" onChange={(event) => setSeoTitle(event.target.value)} value={seoTitle} />
+            <p className={`mt-2 text-xs ${seoTitle.length > 60 ? "text-[#B45309]" : "text-[#6B7280]"}`}>{seoTitle.length} characters; approximately 50–60 is recommended.</p>
+            <FieldError error={state.fieldErrors.seoTitle} field="seoTitle" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold" htmlFor="product-seo-description">SEO Description</label>
+            <textarea className={`${inputClass} min-h-28 py-3`} disabled={isPending} id="product-seo-description" maxLength={500} name="seoDescription" onChange={(event) => setSeoDescription(event.target.value)} value={seoDescription} />
+            <p className={`mt-2 text-xs ${seoDescription.length > 160 ? "text-[#B45309]" : "text-[#6B7280]"}`}>{seoDescription.length} characters; approximately 150–160 is recommended.</p>
+            <FieldError error={state.fieldErrors.seoDescription} field="seoDescription" />
+          </div>
+        </div>
+      </details>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Link className="inline-flex min-h-12 items-center justify-center rounded-[10px] border border-[#D1D5DB] bg-white px-5 text-sm font-semibold text-[#111827] transition-colors hover:bg-[#F8FAFC] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none" href="/admin/products">Cancel</Link>

@@ -6,7 +6,7 @@ import { getAdminCategoryOptions } from "@/lib/data/admin-products";
 export const metadata: Metadata = { title: "Add Product | HypeBuzz Admin" };
 
 export default async function NewProductPage() {
-  const { categories, merchants, hasError } = await getAdminCategoryOptions();
+  const { categories, brands, merchants, hasError } = await getAdminCategoryOptions();
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -23,7 +23,7 @@ export default async function NewProductPage() {
         </div>
       ) : null}
 
-      <ProductForm categories={categories} merchants={merchants} mode="create" />
+      <ProductForm brands={brands} categories={categories} merchants={merchants} mode="create" />
     </div>
   );
 }

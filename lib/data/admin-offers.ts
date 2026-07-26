@@ -27,6 +27,10 @@ export type AdminOfferListItem = {
   stockStatus: OfferStockStatus | null;
   isActive: boolean;
   updatedAt: string;
+  lastCheckedAt: string | null;
+  productId: string;
+  merchantId: string;
+  isStale: boolean;
 };
 
 export type AdminOfferEditorOffer = Pick<
@@ -40,6 +44,9 @@ export type AdminOfferEditorOffer = Pick<
   | "currency"
   | "availability"
   | "coupon_note"
+  | "shipping_note"
+  | "offer_title"
+  | "last_checked_at"
   | "is_active"
 >;
 
@@ -52,6 +59,9 @@ type OfferListRow = {
   availability: string | null;
   is_active: boolean;
   updated_at: string;
+  last_checked_at: string | null;
+  product_id: string;
+  merchant_id: string;
   product: { name: string } | null;
   merchant: { name: string } | null;
 };
@@ -71,11 +81,19 @@ export function parseMerchantFilter(value: string | undefined) {
 }
 
 export type OfferActiveFilter = "all" | "active" | "inactive";
+export type OfferAvailabilityFilter = "all" | OfferStockStatus;
+export type OfferHealthFilter = "all" | "missing_url" | "stale";
 
 export function parseOfferActiveFilter(
   value: string | undefined,
 ): OfferActiveFilter {
   return value === "active" || value === "inactive" ? value : "all";
+}
+export function parseOfferAvailabilityFilter(value: string | undefined): OfferAvailabilityFilter {
+  return value && isOfferStockStatus(value) ? value : "all";
+}
+export function parseOfferHealthFilter(value: string | undefined): OfferHealthFilter {
+  return value === "missing_url" || value === "stale" ? value : "all";
 }
 
 async function getOfferOptions() {
@@ -121,10 +139,16 @@ export async function getAdminOffers({
   search,
   merchantId,
   activeStatus,
+  productId,
+  availability,
+  health,
 }: {
   search: string;
   merchantId: string;
   activeStatus: OfferActiveFilter;
+  productId: string;
+  availability: OfferAvailabilityFilter;
+  health: OfferHealthFilter;
 }) {
   await requireAdmin();
   const supabase = await createClient();
@@ -149,13 +173,17 @@ export async function getAdminOffers({
   if (matchingProductIds === null || matchingProductIds.length > 0) {
     let query = supabase
       .from("product_offers")
-      .select("id, affiliate_url, current_price, original_price, currency, availability, is_active, updated_at, product:products(name), merchant:merchants(name)")
+      .select("id, product_id, merchant_id, affiliate_url, current_price, original_price, currency, availability, is_active, updated_at, last_checked_at, product:products(name), merchant:merchants(name)")
       .order("updated_at", { ascending: false });
     if (matchingProductIds) query = query.in("product_id", matchingProductIds);
     if (merchantId !== "all") query = query.eq("merchant_id", merchantId);
+    if (productId !== "all") query = query.eq("product_id", productId);
+    if (availability !== "all") query = query.eq("availability", availability);
     if (activeStatus !== "all") {
       query = query.eq("is_active", activeStatus === "active");
     }
+    if (health === "missing_url") query = query.or("affiliate_url.is.null,affiliate_url.eq.");
+    if (health === "stale") query = query.or(`last_checked_at.is.null,last_checked_at.lt.${new Date(Date.now() - 7 * 86400000).toISOString()}`);
     offerResult = await query.returns<OfferListRow[]>();
   }
 
@@ -174,6 +202,10 @@ export async function getAdminOffers({
           stockStatus: offer.availability && isOfferStockStatus(offer.availability) ? offer.availability : null,
           isActive: offer.is_active,
           updatedAt: offer.updated_at,
+          lastCheckedAt: offer.last_checked_at,
+          productId: offer.product_id,
+          merchantId: offer.merchant_id,
+          isStale: !offer.last_checked_at || new Date(offer.last_checked_at).getTime() < Date.now() - 7 * 86400000,
         })),
     ...options,
     hasError: Boolean(offerResult.error || options.hasError),
@@ -190,7 +222,7 @@ export async function getAdminOfferEditorData(offerId: string) {
   const [offerResult, options] = await Promise.all([
     supabase
       .from("product_offers")
-      .select("id, product_id, merchant_id, affiliate_url, current_price, original_price, currency, availability, coupon_note, is_active")
+      .select("id, product_id, merchant_id, affiliate_url, current_price, original_price, currency, availability, coupon_note, shipping_note, offer_title, last_checked_at, is_active")
       .eq("id", offerId)
       .maybeSingle<AdminOfferEditorOffer>(),
     getOfferOptions(),

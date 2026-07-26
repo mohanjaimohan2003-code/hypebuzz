@@ -74,13 +74,14 @@ function offerPayload(values: OfferFormValues) {
     currency: values.currency,
     availability: values.stockStatus,
     coupon_note: values.notes || null,
+    shipping_note: values.shippingNote || null,
+    offer_title: values.offerTitle || null,
+    last_checked_at: values.lastCheckedAt ? new Date(values.lastCheckedAt).toISOString() : null,
     is_active: values.isActive,
   };
 }
 
-function offerCreatePayload(values: OfferFormValues) {
-  return { ...offerPayload(values), last_checked_at: null };
-}
+function offerCreatePayload(values: OfferFormValues) { return offerPayload(values); }
 
 function revalidateOfferRoutes() {
   revalidatePath("/admin");
@@ -100,12 +101,13 @@ async function relatedRecordsExist(productId: string, merchantId: string) {
   const supabase = await createClient();
   const [productResult, merchantResult] = await Promise.all([
     supabase.from("products").select("id").eq("id", productId).maybeSingle(),
-    supabase.from("merchants").select("id").eq("id", merchantId).maybeSingle(),
+    supabase.from("merchants").select("id, is_active").eq("id", merchantId).maybeSingle(),
   ]);
 
   return {
     productExists: !productResult.error && Boolean(productResult.data),
     merchantExists: !merchantResult.error && Boolean(merchantResult.data),
+    merchantActive: merchantResult.data?.is_active === true,
   };
 }
 
@@ -130,6 +132,9 @@ export async function createOffer(
         ...(related.merchantExists ? {} : { merchantId: "Choose an available merchant." }),
       },
     };
+  }
+  if (validation.data.isActive && !related.merchantActive) {
+    return { status: "error", message: "Inactive merchants cannot receive new active offers.", fieldErrors: { merchantId: "Choose an active merchant or save this offer as inactive." } };
   }
 
   const supabase = await createClient();
@@ -164,6 +169,9 @@ export async function updateOffer(
       message: "The selected product or merchant is no longer available.",
       fieldErrors: {},
     };
+  }
+  if (validation.data.isActive && !related.merchantActive) {
+    return { status: "error", message: "Inactive merchants cannot have active offers.", fieldErrors: { merchantId: "Choose an active merchant or deactivate this offer." } };
   }
 
   const supabase = await createClient();
@@ -208,4 +216,15 @@ export async function disableOffer(
 
   revalidateOfferRoutes();
   redirect("/admin/offers?notice=disabled");
+}
+
+export async function deleteOffer(offerId: string, _previousState: OfferActionState): Promise<OfferActionState> {
+  void _previousState;
+  if (!(await isAuthorizedAdmin())) return authorizationError();
+  if (!isOfferUuid(offerId)) return { status: "error", message: "The offer could not be found.", fieldErrors: {} };
+  const supabase = await createClient();
+  const { error } = await supabase.from("product_offers").delete().eq("id", offerId);
+  if (error) return databaseError(error);
+  revalidateOfferRoutes();
+  redirect("/admin/offers?notice=deleted");
 }

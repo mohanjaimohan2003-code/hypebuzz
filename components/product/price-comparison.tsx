@@ -1,8 +1,10 @@
 import type { PublicProductOffer } from "@/lib/data/public-product";
+import { availabilityLabel } from "@/lib/offers/price-comparison";
 
 function money(value: number, currency: string) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
+const checkedDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 function MerchantLogo({ offer }: { offer: PublicProductOffer }) {
   if (offer.merchant.logoUrl) {
@@ -15,9 +17,9 @@ function MerchantLogo({ offer }: { offer: PublicProductOffer }) {
 
 export function PriceComparison({ offers }: { offers: PublicProductOffer[] }) {
   return (
-    <section aria-labelledby="deals-heading" className="scroll-mt-24" id="deals">
+    <section aria-labelledby="compare-prices-heading" className="scroll-mt-24" id="compare-prices">
       <div className="flex items-end justify-between gap-4">
-        <div><p className="text-sm font-semibold text-[#2563EB]">Compare stores</p><h2 className="mt-1 text-2xl font-bold text-[#111827]" id="deals-heading">Price comparison</h2></div>
+        <div><p className="text-sm font-semibold text-[#2563EB]">Compare stores</p><h2 className="mt-1 text-2xl font-bold text-[#111827]" id="compare-prices-heading">Compare Prices</h2></div>
         <p className="text-sm text-[#6B7280]">{offers.length} {offers.length === 1 ? "offer" : "offers"}</p>
       </div>
       <p className="mt-2 text-sm text-[#6B7280]">We may earn a commission from qualifying purchases. You complete your purchase with the merchant.</p>
@@ -28,13 +30,14 @@ export function PriceComparison({ offers }: { offers: PublicProductOffer[] }) {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <MerchantLogo offer={offer} />
-                  <div className="min-w-0"><h3 className="font-semibold text-[#111827]">{offer.merchant.name}</h3><p className="text-sm text-[#6B7280]">{offer.availability ?? "Stock status unavailable"}</p></div>
-                  {offer.isLowestPrice ? <span className="ml-auto rounded-full bg-[#EFF6FF] px-3 py-1 text-xs font-bold text-[#1D4ED8]">Lowest price</span> : null}
+                  <div className="min-w-0"><h3 className="font-semibold text-[#111827]">{offer.merchant.name}</h3>{offer.offerTitle ? <p className="text-sm text-[#374151]">{offer.offerTitle}</p> : null}<p className="text-sm text-[#6B7280]">{availabilityLabel(offer.availability)}</p><p className="text-xs text-[#6B7280]">Checked {offer.lastCheckedAt ? checkedDate.format(new Date(offer.lastCheckedAt)) : "date unavailable"}</p></div>
+                  {offer.isLowestPrice ? <span className="ml-auto rounded-full bg-[#DBEAFE] px-3 py-1 text-xs font-bold text-[#1D4ED8]">Best Price</span> : null}
                 </div>
                 <div className="flex items-end justify-between gap-4 sm:block sm:min-w-32 sm:text-right">
                   <div><p className="text-xl font-bold tabular-nums text-[#111827]">{money(offer.currentPrice, offer.currency)}</p>{offer.originalPrice ? <p className="text-sm text-[#6B7280] line-through">{money(offer.originalPrice, offer.currency)}</p> : null}</div>
-                  {offer.discount ? <p className="text-sm font-semibold text-[#15803D]">Save {Math.round(offer.discount)}%</p> : null}
+                  {offer.discount ? <p className="text-sm font-semibold text-[#15803D]">Save {offer.discount}%{offer.savings ? ` (${money(offer.savings, offer.currency)})` : ""}</p> : null}
                 </div>
+                {(offer.couponCode || offer.shippingNote) ? <div className="text-sm sm:max-w-48">{offer.couponCode ? <p><span className="font-semibold">Coupon:</span> <code className="rounded bg-[#F3F4F6] px-1.5 py-1">{offer.couponCode}</code></p> : null}{offer.shippingNote ? <p className="mt-1 text-[#6B7280]">{offer.shippingNote}</p> : null}</div> : null}
                 <a className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[10px] border border-[#EA580C] bg-[#F97316] px-5 text-sm font-bold text-[#111827] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" href={`/go/${offer.id}`} rel="sponsored nofollow noopener noreferrer" target="_blank">Buy now at {offer.merchant.name}<span aria-hidden="true">↗</span></a>
               </div>
             </article>

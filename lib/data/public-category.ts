@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { CategoryProductParams } from "@/lib/validation/category-products";
 import type { SearchFilterOption } from "@/lib/data/product-search";
 import { getPublicCategoryDefinition, publicCategories } from "@/lib/data/public-categories";
+import { isDatabaseOfferEligibleForPublication, isDatabaseOfferPubliclyVisible } from "@/lib/offers/publication-contract";
 
 export type PublicCategory = {
   id: string | null;
@@ -47,7 +48,9 @@ type ProductRow = {
     currency: string;
     availability: string | null;
     merchant_id: string;
-    merchant: { slug: string } | null;
+    affiliate_url: string;
+    is_active: boolean;
+    merchant: { slug: string; is_active: boolean } | null;
   }>;
 };
 
@@ -124,7 +127,7 @@ export async function getPublicCategoryProducts(
   const [productsResult, brandsResult, merchantsResult] = await Promise.all([
     runCategoryQuery("products", supabase
       .from("products")
-      .select("id, name, slug, primary_image_url, created_at, is_featured, is_trending, brand:brands(name, slug), product_offers(current_price, original_price, currency, availability, merchant_id, merchant:merchants(slug))")
+      .select("id, name, slug, primary_image_url, created_at, is_featured, is_trending, brand:brands(name, slug), product_offers(current_price, original_price, currency, availability, affiliate_url, is_active, merchant_id, merchant:merchants(slug, is_active))")
       .eq("status", "published")
       .eq("category_id", category.id)
       .order("created_at", { ascending: false })
@@ -136,9 +139,10 @@ export async function getPublicCategoryProducts(
   const normalizedAvailability = filters.availability?.toLowerCase().replaceAll(" ", "_") ?? null;
   const rows = ((productsResult.data ?? []) as unknown as ProductRow[])
     .flatMap((product) => {
-      const offers = product.product_offers;
-      const cheapest = [...offers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];
-      const biggestDiscount = offers.reduce<number | null>((biggest, offer) => {
+      const offers = product.product_offers.filter(isDatabaseOfferPubliclyVisible);
+      const eligibleOffers = offers.filter(isDatabaseOfferEligibleForPublication);
+      const cheapest = [...eligibleOffers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];
+      const biggestDiscount = eligibleOffers.reduce<number | null>((biggest, offer) => {
         const current = Number(offer.current_price);
         const original = offer.original_price === null ? null : Number(offer.original_price);
         if (!original || original <= current) return biggest;
@@ -180,9 +184,9 @@ export async function getPublicCategoryProducts(
           imageAlt: product.name,
           price: cheapest ? Number(cheapest.current_price) : undefined,
           currency: cheapest?.currency,
-          storeCount: new Set(product.product_offers.map((offer) => offer.merchant_id)).size,
+          storeCount: new Set(product.product_offers.filter(isDatabaseOfferEligibleForPublication).map((offer) => offer.merchant_id)).size,
           productHref: `/products/${product.slug}`,
-          dealsHref: `/products/${product.slug}#deals`,
+          dealsHref: `/products/${product.slug}#compare-prices`,
           badge:
             biggestDiscount && biggestDiscount > 0
               ? `${Math.round(biggestDiscount)}% off`

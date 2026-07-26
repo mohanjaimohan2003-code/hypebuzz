@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, type FormEvent } from "react";
-import { disableOffer } from "@/app/admin/(protected)/offers/actions";
+import { deleteOffer, disableOffer } from "@/app/admin/(protected)/offers/actions";
 import { initialOfferActionState } from "@/lib/validation/offer";
 import { AdminIcon } from "./admin-icon";
 
@@ -19,6 +19,7 @@ export function OfferActions({
 }) {
   const action = disableOffer.bind(null, offerId);
   const [state, formAction, isPending] = useActionState(action, initialOfferActionState);
+  const [deleteState, deleteAction, isDeleting] = useActionState(deleteOffer.bind(null, offerId), initialOfferActionState);
 
   function confirmDisable(event: FormEvent<HTMLFormElement>) {
     if (!window.confirm(`Disable the ${merchantName} offer for ${productName}?`)) {
@@ -40,8 +41,11 @@ export function OfferActions({
             </button>
           </form>
         ) : null}
+        <form action={deleteAction} onSubmit={(event) => { if (!window.confirm(`Permanently delete the ${merchantName} offer for ${productName}?`)) event.preventDefault(); }}>
+          <button className="inline-flex min-h-11 items-center rounded-[10px] border border-[#FCA5A5] px-3 text-sm font-semibold text-[#B91C1C]" disabled={isDeleting} type="submit">{isDeleting ? "Deleting..." : "Delete"}</button>
+        </form>
       </div>
-      {state.status === "error" ? <p aria-live="polite" className="mt-2 max-w-xs text-xs font-medium text-[#B91C1C]" role="alert">{state.message}</p> : null}
+      {state.status === "error" || deleteState.status === "error" ? <p aria-live="polite" className="mt-2 max-w-xs text-xs font-medium text-[#B91C1C]" role="alert">{state.message || deleteState.message}</p> : null}
     </div>
   );
 }

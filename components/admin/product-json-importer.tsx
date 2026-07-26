@@ -1,0 +1,96 @@
+"use client";
+
+import { useState } from "react";
+import { prepareProductImport } from "@/lib/admin/product-import/apply-import";
+import { productImportExample } from "@/lib/admin/product-import/example";
+import { parseProductImportJson } from "@/lib/admin/product-import/schema";
+import type { ImportReference, ProductImportApplication, ProductImportPreview } from "@/lib/admin/product-import/types";
+
+type Props = {
+  categories: ImportReference[];
+  brands: ImportReference[];
+  merchants: ImportReference[];
+  onApply: (application: ProductImportApplication) => void;
+};
+
+const buttonClass = "min-h-11 rounded-[10px] border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2";
+
+export function ProductJsonImporter({ categories, brands, merchants, onApply }: Props) {
+  const [json, setJson] = useState("");
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState<ProductImportPreview | null>(null);
+  const [success, setSuccess] = useState("");
+
+  function validateImport() {
+    setSuccess("");
+    const parsed = parseProductImportJson(json);
+    if (!parsed.success) {
+      setError(parsed.error);
+      setPreview(null);
+      return;
+    }
+    setError("");
+    setPreview(prepareProductImport(parsed, { categories, brands, merchants }));
+  }
+
+  function apply() {
+    if (!preview) return;
+    onApply(preview.application);
+    setSuccess("Product data imported successfully. Review all fields, upload images and approve before publishing.");
+    setPreview(null);
+  }
+
+  function clearImport() {
+    setJson("");
+    setError("");
+    setPreview(null);
+    setSuccess("");
+  }
+
+  return (
+    <details className="group rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] shadow-[0_1px_2px_rgba(17,24,39,0.04)]">
+      <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 sm:px-6">
+        <span><span className="block text-lg font-bold text-[#111827]">AI Product Import</span><span className="mt-1 block text-sm font-normal leading-6 text-[#4B5563]">Paste structured product JSON to automatically fill the product form. Review all details and upload images before publishing.</span></span>
+        <span aria-hidden="true" className="shrink-0 text-xl text-[#1D4ED8] group-open:rotate-180">⌄</span>
+      </summary>
+      <div className="border-t border-[#BFDBFE] p-5 sm:p-6">
+        <label className="text-sm font-semibold text-[#111827]" htmlFor="product-import-json">Product JSON</label>
+        <textarea aria-describedby="product-import-limit" className="mt-2 min-h-56 w-full rounded-[10px] border border-[#93C5FD] bg-white p-4 font-mono text-xs leading-6 text-[#111827] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]" id="product-import-json" maxLength={102400} onChange={(event) => { setJson(event.target.value); setError(""); setPreview(null); setSuccess(""); }} placeholder={'{\n  "productName": "Example product"\n}'} spellCheck={false} value={json} />
+        <p className="mt-2 text-xs text-[#4B5563]" id="product-import-limit">JSON only. Maximum 100 KB. Import never saves automatically.</p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <button className={`${buttonClass} border-[#93C5FD] bg-white text-[#1D4ED8]`} onClick={() => { setJson(JSON.stringify(productImportExample, null, 2)); setError(""); setPreview(null); setSuccess(""); }} type="button">Load Example</button>
+          <button className={`${buttonClass} border-[#2563EB] bg-[#2563EB] text-white disabled:border-[#93C5FD] disabled:bg-[#93C5FD]`} disabled={!json.trim()} onClick={validateImport} type="button">Auto Fill Product</button>
+          <button className={`${buttonClass} border-[#D1D5DB] bg-white text-[#374151]`} onClick={clearImport} type="button">Clear Import</button>
+        </div>
+
+        {error ? <div className="mt-4 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-sm font-medium text-[#991B1B]" role="alert">{error}</div> : null}
+        {success ? <div aria-live="polite" className="mt-4 rounded-[10px] border border-[#86EFAC] bg-[#F0FDF4] p-4 text-sm font-medium text-[#166534]" role="status">{success}</div> : null}
+
+        {preview ? (
+          <section aria-labelledby="product-import-preview-title" className="mt-5 rounded-xl border border-[#93C5FD] bg-white p-4 sm:p-5">
+            <h3 className="font-bold text-[#111827]" id="product-import-preview-title">Import preview</h3>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+              <div><dt className="text-[#6B7280]">Product name</dt><dd className="font-semibold">{preview.product.productName ?? "Not supplied"}</dd></div>
+              <div><dt className="text-[#6B7280]">Brand</dt><dd className="font-semibold">{preview.product.brand ?? "Not supplied"}</dd></div>
+              <div><dt className="text-[#6B7280]">Category</dt><dd className="font-semibold">{preview.product.category ?? "Not supplied"}</dd></div>
+              <div><dt className="text-[#6B7280]">Merchant</dt><dd className="font-semibold">{preview.product.merchant ?? "Not supplied"}</dd></div>
+              <div><dt className="text-[#6B7280]">Current / original price</dt><dd className="font-semibold">{preview.product.currentPrice ?? "—"} / {preview.product.originalPrice ?? "—"}</dd></div>
+              <div><dt className="text-[#6B7280]">Status</dt><dd className="font-semibold capitalize">{preview.product.status}</dd></div>
+              <div><dt className="text-[#6B7280]">Highlights</dt><dd className="font-semibold">{preview.product.highlights?.length ?? 0}</dd></div>
+              <div><dt className="text-[#6B7280]">Specifications</dt><dd className="font-semibold">{Object.keys(preview.product.specifications ?? {}).length}</dd></div>
+              <div><dt className="text-[#6B7280]">FAQs</dt><dd className="font-semibold">{preview.product.faq?.length ?? 0}</dd></div>
+            </dl>
+            <p className="mt-4 text-sm text-[#374151]">{preview.importedFields.length} normalized fields are ready. Nothing has been saved.</p>
+            {preview.warnings.length ? <div className="mt-4 rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] p-4"><p className="text-sm font-bold text-[#92400E]">Some fields could not be imported. Review the warnings below.</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#78350F]">{preview.warnings.map((warning, index) => <li key={`${warning.field}-${index}`}>{warning.message}</li>)}</ul></div> : <p className="mt-4 text-sm font-medium text-[#166534]">JSON validation passed with no warnings.</p>}
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:flex sm:justify-end">
+              <button className={`${buttonClass} border-[#D1D5DB] bg-white text-[#374151]`} onClick={() => setPreview(null)} type="button">Cancel</button>
+              <button className={`${buttonClass} border-[#2563EB] bg-[#2563EB] text-white`} onClick={apply} type="button">Apply to Form</button>
+            </div>
+          </section>
+        ) : null}
+
+        {success ? <div className="mt-5 rounded-xl border border-[#D1D5DB] bg-white p-4"><h3 className="font-bold">Import checklist</h3><ul className="mt-3 space-y-2 text-sm"><li>✓ Product details imported</li><li>○ Upload at least one product image</li><li>○ Review category, brand and merchant</li><li>○ Verify price and affiliate link</li><li>○ Save as draft or publish</li></ul></div> : null}
+      </div>
+    </details>
+  );
+}

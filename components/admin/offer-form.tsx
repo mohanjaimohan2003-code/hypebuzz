@@ -22,6 +22,9 @@ export type OfferFormInitialOffer = {
   stockStatus: OfferStockStatus;
   isActive: boolean;
   notes: string;
+  shippingNote: string;
+  offerTitle: string;
+  lastCheckedAt: string;
 };
 
 type OfferFormProps = {
@@ -110,7 +113,7 @@ export function OfferForm({ mode, products, merchants, offer }: OfferFormProps) 
           <div>
             <label className="text-sm font-semibold text-[#111827]" htmlFor="offer-stock-status">Stock status</label>
             <select aria-describedby={describedBy("stockStatus")} aria-invalid={Boolean(state.fieldErrors.stockStatus)} className={inputClass} defaultValue={offer?.stockStatus ?? "in_stock"} disabled={isPending} id="offer-stock-status" name="stockStatus" required>
-              <option value="in_stock">In Stock</option><option value="limited_stock">Limited Stock</option><option value="out_of_stock">Out of Stock</option>
+              <option value="in_stock">In stock</option><option value="limited_stock">Limited stock</option><option value="out_of_stock">Out of stock</option><option value="pre_order">Pre-order</option><option value="unknown">Unknown</option>
             </select>
             <FieldError error={state.fieldErrors.stockStatus} field="stockStatus" />
           </div>
@@ -126,11 +129,11 @@ export function OfferForm({ mode, products, merchants, offer }: OfferFormProps) 
       <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6">
         <legend className="px-1 text-lg font-bold text-[#111827]">Publishing details</legend>
         <div className="mt-2 space-y-6">
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="offer-notes">Notes <span className="font-normal text-[#6B7280]">(optional)</span></label>
-            <textarea aria-describedby={describedBy("notes", "offer-notes-hint")} aria-invalid={Boolean(state.fieldErrors.notes)} className={`${inputClass} min-h-28 py-3`} defaultValue={offer?.notes ?? ""} disabled={isPending} id="offer-notes" maxLength={500} name="notes" />
-            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="offer-notes-hint">Internal or shopper-facing coupon context, up to 500 characters.</p>
-            <FieldError error={state.fieldErrors.notes} field="notes" />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-title">Offer title <span className="font-normal text-[#6B7280]">(optional)</span></label><input className={inputClass} defaultValue={offer?.offerTitle ?? ""} disabled={isPending} id="offer-title" maxLength={160} name="offerTitle" /><FieldError error={state.fieldErrors.offerTitle} field="offerTitle" /></div>
+            <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-coupon">Coupon code <span className="font-normal text-[#6B7280]">(optional)</span></label><input className={inputClass} defaultValue={offer?.notes ?? ""} disabled={isPending} id="offer-coupon" maxLength={100} name="notes" /><FieldError error={state.fieldErrors.notes} field="notes" /></div>
+            <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-shipping">Shipping note <span className="font-normal text-[#6B7280]">(optional)</span></label><input className={inputClass} defaultValue={offer?.shippingNote ?? ""} disabled={isPending} id="offer-shipping" maxLength={300} name="shippingNote" /><FieldError error={state.fieldErrors.shippingNote} field="shippingNote" /></div>
+            <div><label className="text-sm font-semibold text-[#111827]" htmlFor="offer-last-checked">Last checked <span className="font-normal text-[#6B7280]">(optional)</span></label><input className={inputClass} defaultValue={offer?.lastCheckedAt ?? ""} disabled={isPending} id="offer-last-checked" name="lastCheckedAt" type="datetime-local" /><FieldError error={state.fieldErrors.lastCheckedAt} field="lastCheckedAt" /></div>
           </div>
           <label className="flex min-h-12 cursor-pointer items-start gap-3 rounded-[10px] border border-[#E5E7EB] p-4 hover:bg-[#F8FAFC] focus-within:ring-2 focus-within:ring-[#2563EB] focus-within:ring-offset-2">
             <input className="mt-0.5 h-5 w-5 rounded border-[#9CA3AF] accent-[#2563EB]" defaultChecked={offer?.isActive ?? true} disabled={isPending} name="isActive" type="checkbox" />

@@ -42,6 +42,7 @@ export type Category = {
   slug: string;
   description: string | null;
   image_url: string | null;
+  display_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -66,10 +67,13 @@ export type Product = {
   amazon_asin: string | null;
   short_description: string | null;
   description: string | null;
+  highlights: Json;
   category_id: string | null;
   brand_id: string | null;
   primary_image_url: string | null;
   specifications: Json;
+  seo_title: string | null;
+  seo_description: string | null;
   status: ProductStatus;
   is_featured: boolean;
   is_trending: boolean;
@@ -189,6 +193,77 @@ export type Database = {
     };
     Views: Record<string, never>;
     Functions: {
+      set_updated_at: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      search_products: {
+        Args: {
+          p_query?: string | null;
+          p_category_slug?: string | null;
+          p_brand_slug?: string | null;
+          p_merchant_slug?: string | null;
+          p_min_price?: number | null;
+          p_max_price?: number | null;
+          p_min_discount?: number | null;
+          p_availability?: string | null;
+          p_best_price_only?: boolean;
+          p_sort?: string;
+          p_limit?: number;
+        };
+        Returns: Array<{
+          id: string;
+          name: string;
+          slug: string;
+          primary_image_url: string | null;
+          brand_name: string | null;
+          best_price: number;
+          currency: string;
+          store_count: number;
+          biggest_discount: number | null;
+        }>;
+      };
+      search_category_products: {
+        Args: {
+          p_category_slug: string;
+          p_query?: string | null;
+          p_brand_slug?: string | null;
+          p_merchant_slug?: string | null;
+          p_min_price?: number | null;
+          p_max_price?: number | null;
+          p_min_discount?: number | null;
+          p_availability?: string | null;
+          p_best_price_only?: boolean;
+          p_featured?: boolean;
+          p_trending?: boolean;
+          p_sort?: string;
+          p_limit?: number;
+        };
+        Returns: Array<{
+          id: string;
+          name: string;
+          slug: string;
+          primary_image_url: string | null;
+          brand_name: string | null;
+          best_price: number;
+          currency: string;
+          store_count: number;
+          biggest_discount: number | null;
+          total_count: number;
+        }>;
+      };
+      assert_product_is_storefront_ready: {
+        Args: { p_product_id: string };
+        Returns: undefined;
+      };
+      enforce_product_storefront_ready: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
+      enforce_offer_product_storefront_ready: {
+        Args: Record<string, never>;
+        Returns: unknown;
+      };
       save_product_with_offer: {
         Args: {
           p_product_id: string | null; p_name: string; p_slug: string;

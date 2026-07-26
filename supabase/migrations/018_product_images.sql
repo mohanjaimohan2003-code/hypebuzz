@@ -81,6 +81,23 @@ begin
   if jsonb_typeof(p_images) <> 'array' or jsonb_array_length(p_images) > 8 then
     raise exception using errcode = '23514', message = 'Invalid product image list';
   end if;
+  if jsonb_array_length(p_images) > 0 and (
+    select count(*) from jsonb_array_elements(p_images) image where coalesce((image->>'is_primary')::boolean, false)
+  ) <> 1 then
+    raise exception using errcode = '23514', message = 'A product gallery must have exactly one primary image';
+  end if;
+  if exists (
+    select 1 from jsonb_to_recordset(p_images) as image(
+      id uuid, image_url text, storage_path text, source_type text, alt_text text, sort_order integer, is_primary boolean
+    )
+    where image.id is null
+      or nullif(btrim(image.image_url), '') is null
+      or image.source_type not in ('upload', 'external')
+      or image.sort_order < 0
+      or image.is_primary is null
+  ) then
+    raise exception using errcode = '23514', message = 'Invalid product image data';
+  end if;
   delete from public.product_images where product_id = p_product_id;
   insert into public.product_images (id, product_id, image_url, storage_path, source_type, alt_text, sort_order, is_primary)
   select x.id, p_product_id, x.image_url, x.storage_path, x.source_type, x.alt_text, x.sort_order, x.is_primary

@@ -11,9 +11,11 @@ export type AdminProductStatusFilter = "all" | ProductStatus;
 export type AdminCategoryOption = {
   id: string;
   name: string;
+  slug: string;
   isActive: boolean;
 };
-export type AdminMerchantOption = { id: string; name: string; isActive: boolean };
+export type AdminMerchantOption = { id: string; name: string; slug: string; isActive: boolean };
+export type AdminBrandOption = { id: string; name: string; slug: string; isActive: boolean };
 
 export type AdminProductListItem = {
   id: string;
@@ -32,7 +34,13 @@ export type AdminProductEditorProduct = Pick<
   | "name"
   | "slug"
   | "short_description"
+  | "description"
+  | "highlights"
+  | "specifications"
+  | "seo_title"
+  | "seo_description"
   | "category_id"
+  | "brand_id"
   | "primary_image_url"
   | "is_featured"
   | "is_trending"
@@ -41,6 +49,7 @@ export type AdminProductEditorProduct = Pick<
 export type AdminPrimaryOffer = {
   id: string; merchant_id: string; affiliate_url: string; current_price: number;
   original_price: number | null; currency: string; availability: string | null; is_active: boolean;
+  coupon_note: string | null; shipping_note: string | null; offer_title: string | null; last_checked_at: string | null;
 };
 
 type ProductListRow = {
@@ -113,14 +122,16 @@ export async function getAdminProducts({
 
 export async function getAdminCategoryOptions(): Promise<{
   categories: AdminCategoryOption[];
+  brands: AdminBrandOption[];
   merchants: AdminMerchantOption[];
   hasError: boolean;
 }> {
   await requireAdmin();
   const supabase = await createClient();
-  const [categoryResult, merchantResult] = await Promise.all([
-    supabase.from("categories").select("id, name, is_active").order("name").returns<Array<{ id: string; name: string; is_active: boolean }>>(),
-    supabase.from("merchants").select("id, name, is_active").order("name").returns<Array<{ id: string; name: string; is_active: boolean }>>(),
+  const [categoryResult, brandResult, merchantResult] = await Promise.all([
+    supabase.from("categories").select("id, name, slug, is_active").eq("is_active", true).order("name").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>(),
+    supabase.from("brands").select("id, name, slug, is_active").order("name").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>(),
+    supabase.from("merchants").select("id, name, slug, is_active").order("name").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>(),
   ]);
 
   return {
@@ -129,10 +140,12 @@ export async function getAdminCategoryOptions(): Promise<{
       : (categoryResult.data ?? []).map((category) => ({
           id: category.id,
           name: category.name,
+          slug: category.slug,
           isActive: category.is_active,
         })),
-    merchants: merchantResult.error ? [] : (merchantResult.data ?? []).map((merchant) => ({ id: merchant.id, name: merchant.name, isActive: merchant.is_active })),
-    hasError: Boolean(categoryResult.error || merchantResult.error),
+    brands: brandResult.error ? [] : (brandResult.data ?? []).map((brand) => ({ id: brand.id, name: brand.name, slug: brand.slug, isActive: brand.is_active })),
+    merchants: merchantResult.error ? [] : (merchantResult.data ?? []).map((merchant) => ({ id: merchant.id, name: merchant.name, slug: merchant.slug, isActive: merchant.is_active })),
+    hasError: Boolean(categoryResult.error || brandResult.error || merchantResult.error),
   };
 }
 
@@ -144,19 +157,20 @@ export async function getAdminProductEditorData(productId: string) {
   }
 
   const supabase = await createClient();
-  const [productResult, categoryResult, merchantResult, offerResult, imagesResult] = await Promise.all([
+  const [productResult, categoryResult, brandResult, merchantResult, offerResult, imagesResult] = await Promise.all([
     supabase
       .from("products")
-      .select("id, name, slug, short_description, category_id, primary_image_url, is_featured, is_trending, status")
+      .select("id, name, slug, short_description, description, highlights, specifications, seo_title, seo_description, category_id, brand_id, primary_image_url, is_featured, is_trending, status")
       .eq("id", productId)
       .maybeSingle<AdminProductEditorProduct>(),
     supabase
       .from("categories")
-      .select("id, name, is_active")
+      .select("id, name, slug, is_active")
       .order("name")
-      .returns<Array<{ id: string; name: string; is_active: boolean }>>(),
-    supabase.from("merchants").select("id, name, is_active").order("name").returns<Array<{ id: string; name: string; is_active: boolean }>>(),
-    supabase.from("product_offers").select("id, merchant_id, affiliate_url, current_price, original_price, currency, availability, is_active").eq("product_id", productId).order("is_active", { ascending: false }).order("current_price").limit(1).maybeSingle<AdminPrimaryOffer>(),
+      .returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>(),
+    supabase.from("brands").select("id, name, slug, is_active").order("name").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>(),
+    supabase.from("merchants").select("id, name, slug, is_active").order("name").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>(),
+    supabase.from("product_offers").select("id, merchant_id, affiliate_url, current_price, original_price, currency, availability, coupon_note, shipping_note, offer_title, last_checked_at, is_active").eq("product_id", productId).order("is_active", { ascending: false }).order("current_price").returns<AdminPrimaryOffer[]>(),
     supabase.from("product_images").select("*").eq("product_id", productId).order("sort_order").returns<ProductImage[]>(),
   ]);
 
@@ -167,11 +181,14 @@ export async function getAdminProductEditorData(productId: string) {
       : (categoryResult.data ?? []).map((category) => ({
           id: category.id,
           name: category.name,
+          slug: category.slug,
           isActive: category.is_active,
         })),
-    merchants: merchantResult.error ? [] : (merchantResult.data ?? []).map((merchant) => ({ id: merchant.id, name: merchant.name, isActive: merchant.is_active })),
-    offer: offerResult.error ? null : offerResult.data,
+    merchants: merchantResult.error ? [] : (merchantResult.data ?? []).map((merchant) => ({ id: merchant.id, name: merchant.name, slug: merchant.slug, isActive: merchant.is_active })),
+    brands: brandResult.error ? [] : (brandResult.data ?? []).map((brand) => ({ id: brand.id, name: brand.name, slug: brand.slug, isActive: brand.is_active })),
+    offer: offerResult.error ? null : offerResult.data?.[0] ?? null,
+    offers: offerResult.error ? [] : offerResult.data ?? [],
     images: imagesResult.error ? [] : (imagesResult.data ?? []).map(image => ({ id: image.id, imageUrl: image.image_url, sourceType: image.source_type, isPrimary: image.is_primary, sortOrder: image.sort_order })),
-    hasError: Boolean(productResult.error || categoryResult.error || merchantResult.error || offerResult.error || imagesResult.error),
+    hasError: Boolean(productResult.error || categoryResult.error || brandResult.error || merchantResult.error || offerResult.error || imagesResult.error),
   };
 }

@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { getAdminAccess } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, ProductImage } from "@/lib/types/database";
+import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/offers/publication-contract";
+import { richFieldsDatabasePayload } from "@/lib/products/rich-fields";
 import {
   isUuid,
   validateProductForm,
@@ -106,7 +108,9 @@ function databaseError(
 
   return {
     status: "error",
-    message: `The product could not be saved (database error ${diagnostic.code}).`,
+    message: process.env.NODE_ENV === "development"
+      ? `The product could not be saved (${diagnostic.code}: ${diagnostic.message})`
+      : "The product could not be saved. Please try again or contact an administrator.",
     fieldErrors: {},
   };
 }
@@ -143,8 +147,18 @@ async function categoryExists(categoryId: string): Promise<{
 
 async function saveProductWithOffer(productId: string | null, values: ProductFormValues, formData: FormData, primaryImageUrl: string | null = null) {
   const offerIdValue = String(formData.get("offerId") ?? "").trim();
-  const offerId = isUuid(offerIdValue) ? offerIdValue : null;
-  const hasOffer = Boolean(values.merchantId && values.affiliateUrl && values.currentPrice && values.originalPrice);
+  const primaryOffer = values.offers.find((offer) => isOfferEligibleForPublication({
+    affiliateUrl: offer.affiliateUrl,
+    currentPrice: offer.currentPrice,
+    originalPrice: offer.originalPrice,
+    currency: offer.currency,
+    availability: offer.stockStatus,
+    isActive: offer.isActive,
+    // Active merchant IDs are re-read by validateProductOfferMerchants.
+    merchantIsActive: true,
+  })) ?? values.offers[0];
+  const offerId = primaryOffer?.persisted === true && isUuid(primaryOffer.id) ? primaryOffer.id : (isUuid(offerIdValue) ? offerIdValue : null);
+  const hasOffer = Boolean(primaryOffer);
   const supabase = await createClient();
   return supabase.rpc("save_product_with_offer", {
     p_product_id: productId,
@@ -157,14 +171,43 @@ async function saveProductWithOffer(productId: string | null, values: ProductFor
     p_is_trending: values.isTrending,
     p_status: values.status,
     p_offer_id: hasOffer ? offerId : null,
-    p_merchant_id: hasOffer ? values.merchantId : null,
-    p_affiliate_url: hasOffer ? values.affiliateUrl : null,
-    p_current_price: hasOffer ? values.currentPrice : null,
-    p_original_price: hasOffer ? values.originalPrice : null,
-    p_currency: hasOffer ? values.currency : null,
-    p_availability: hasOffer ? values.stockStatus : null,
-    p_offer_is_active: hasOffer ? values.offerIsActive : null,
+    p_merchant_id: hasOffer ? primaryOffer.merchantId : null,
+    p_affiliate_url: hasOffer ? primaryOffer.affiliateUrl : null,
+    p_current_price: hasOffer ? primaryOffer.currentPrice : null,
+    p_original_price: hasOffer ? primaryOffer.originalPrice : null,
+    p_currency: hasOffer ? primaryOffer.currency : null,
+    p_availability: hasOffer ? primaryOffer.stockStatus : null,
+    p_offer_is_active: hasOffer ? primaryOffer.isActive : null,
   });
+}
+
+async function validateBrandReference(brandId: string) {
+  if (!brandId) return { exists: true, error: null };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("brands").select("id").eq("id", brandId).maybeSingle();
+  return { exists: Boolean(data), error };
+}
+
+async function validateProductOfferMerchants(values: ProductFormValues) {
+  const activeMerchantIds = [...new Set(
+    values.offers.filter((offer) => offer.isActive).map((offer) => offer.merchantId),
+  )];
+  if (!activeMerchantIds.length) return { valid: true, error: null };
+  const supabase = await createClient();
+  const result = await supabase.from("merchants").select("id").in("id", activeMerchantIds)
+    .eq("is_active", true).returns<Array<{ id: string }>>();
+  return {
+    valid: !result.error && (result.data ?? []).length === activeMerchantIds.length,
+    error: result.error,
+  };
+}
+
+async function saveProductDetails(productId: string, values: ProductFormValues) {
+  const supabase = await createClient();
+  return supabase.from("products").update({
+    brand_id: values.brandId || null,
+    ...richFieldsDatabasePayload(values),
+  }).eq("id", productId).select("id").maybeSingle();
 }
 
 const IMAGE_BUCKET = "product-images";
@@ -176,6 +219,35 @@ async function syncProductImages(productId:string, productName:string, values:Pr
   if(existingResult.error) return "Product images could not be loaded."; const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
   for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "An existing image is no longer available. Refresh and try again.";}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];const ext=await imageExtension(file);if(!ext){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "Only genuine JPG, PNG, or WebP images are allowed.";}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "This image could not be uploaded. Please try again.";}uploaded.push(path);rows.push({id,image_url:`/product-images/${id}`,storage_path:path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
   if(rows.length&&!rows.some(x=>x.is_primary))rows[0].is_primary=true;const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){if(uploaded.length)await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);return "Product images could not be saved. Please try again.";}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length)await supabase.storage.from(IMAGE_BUCKET).remove(removed);return null;
+}
+
+async function syncProductOffers(productId: string, values: ProductFormValues) {
+  const supabase = await createClient();
+  const activeMerchantIds = [...new Set(values.offers.filter((offer) => offer.isActive).map((offer) => offer.merchantId))];
+  if (activeMerchantIds.length) {
+    const result = await supabase.from("merchants").select("id").in("id", activeMerchantIds).eq("is_active", true).returns<Array<{ id: string }>>();
+    if (result.error || (result.data ?? []).length !== activeMerchantIds.length) return "Active offers must use active merchants.";
+  }
+  const rows = values.offers.map((offer) => ({
+    id: offer.id,
+    merchant_id: offer.merchantId,
+    affiliate_url: offer.affiliateUrl,
+    current_price: offer.currentPrice,
+    original_price: offer.originalPrice,
+    currency: offer.currency,
+    availability: offer.stockStatus,
+    is_active: offer.isActive,
+    coupon_code: offer.couponCode,
+    shipping_note: offer.shippingNote,
+    offer_title: offer.offerTitle,
+    last_checked_at: offer.lastCheckedAt ? new Date(offer.lastCheckedAt).toISOString() : null,
+  }));
+  const result = await supabase.rpc("replace_product_offers", { p_product_id: productId, p_offers: rows as unknown as Json });
+  if (result.error) {
+    console.error("Supabase product offer sync failed", { code: result.error.code, message: result.error.message });
+    return result.error.code === "23505" ? "Only one active offer per merchant is allowed." : "Product offers could not be saved. Please try again.";
+  }
+  return null;
 }
 
 function inactivePublishedCategoryError(): ProductActionState {
@@ -207,14 +279,24 @@ export async function createProduct(
   if (validation.data.status === "published" && !category.active) {
     return inactivePublishedCategoryError();
   }
+  const merchants = await validateProductOfferMerchants(validation.data);
+  if (merchants.error) return databaseError(merchants.error, "insert");
+  if (!merchants.valid) return { status: "error", message: publicationErrorMessages.OFFER_MERCHANT_INACTIVE, fieldErrors: { offerList: publicationErrorMessages.OFFER_MERCHANT_INACTIVE } };
+  const brand = await validateBrandReference(validation.data.brandId);
+  if (brand.error) return databaseError(brand.error, "insert");
+  if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
   const initialPrimary = validation.data.imageManifest.find(x=>x.isPrimary&&x.kind==="external")?.url ?? validation.data.imageManifest.find(x=>x.kind==="external")?.url ?? null;
   const { data, error } = await saveProductWithOffer(null, validation.data, formData, initialPrimary);
 
   if (error) return databaseError(error, "insert");
   if (!data) return { status:"error",message:"The product could not be created.",fieldErrors:{} };
+  const brandResult = await saveProductDetails(data, validation.data);
+  if (brandResult.error || !brandResult.data) { const supabase = await createClient(); await supabase.rpc("delete_failed_product", { p_product_id: data }); return databaseError(brandResult.error, "insert"); }
   const imageError=await syncProductImages(data,validation.data.name,validation.data,formData);
   if(imageError){const supabase=await createClient();await supabase.rpc("delete_failed_product",{p_product_id:data});return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
+  const offerError = await syncProductOffers(data, validation.data);
+  if (offerError) { const supabase = await createClient(); await supabase.rpc("delete_failed_product", { p_product_id: data }); return { status: "error", message: offerError, fieldErrors: { offerList: offerError } }; }
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=created");
@@ -246,6 +328,12 @@ export async function updateProduct(
   if (validation.data.status === "published" && !category.active) {
     return inactivePublishedCategoryError();
   }
+  const merchants = await validateProductOfferMerchants(validation.data);
+  if (merchants.error) return databaseError(merchants.error, "update");
+  if (!merchants.valid) return { status: "error", message: publicationErrorMessages.OFFER_MERCHANT_INACTIVE, fieldErrors: { offerList: publicationErrorMessages.OFFER_MERCHANT_INACTIVE } };
+  const brand = await validateBrandReference(validation.data.brandId);
+  if (brand.error) return databaseError(brand.error, "update");
+  if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
   const supabase=await createClient(); const current=await supabase.from("products").select("primary_image_url").eq("id",productId).maybeSingle<{primary_image_url:string|null}>();
   const { data, error } = await saveProductWithOffer(productId, validation.data, formData, current.data?.primary_image_url??null);
@@ -254,8 +342,12 @@ export async function updateProduct(
   if (!data) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
+  const brandResult = await saveProductDetails(productId, validation.data);
+  if (brandResult.error || !brandResult.data) return databaseError(brandResult.error, "update");
   const imageError=await syncProductImages(productId,validation.data.name,validation.data,formData);
   if(imageError)return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};
+  const offerError = await syncProductOffers(productId, validation.data);
+  if (offerError) return { status: "error", message: offerError, fieldErrors: { offerList: offerError } };
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=updated");
