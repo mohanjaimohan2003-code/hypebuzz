@@ -3,7 +3,6 @@ export type CategoryFormValues = {
   slug: string;
   description: string;
   iconUrl: string;
-  displayOrder: number;
   isActive: boolean;
 };
 
@@ -11,8 +10,7 @@ export type CategoryField =
   | "name"
   | "slug"
   | "description"
-  | "iconUrl"
-  | "displayOrder";
+  | "iconUrl";
 
 export type CategoryFieldErrors = Partial<Record<CategoryField, string>>;
 
@@ -53,15 +51,11 @@ export function isCategoryUuid(value: string) {
 export function validateCategoryForm(formData: FormData):
   | { success: true; data: CategoryFormValues }
   | { success: false; state: CategoryActionState } {
-  const displayOrderInput = getString(formData, "displayOrder");
   const values: CategoryFormValues = {
     name: getString(formData, "name"),
     slug: getString(formData, "slug").toLowerCase(),
     description: getString(formData, "description"),
     iconUrl: getString(formData, "iconUrl"),
-    displayOrder: /^\d+$/.test(displayOrderInput)
-      ? Number(displayOrderInput)
-      : Number.NaN,
     isActive: formData.get("isActive") === "on",
   };
   const fieldErrors: CategoryFieldErrors = {};
@@ -89,15 +83,6 @@ export function validateCategoryForm(formData: FormData):
     } catch {
       fieldErrors.iconUrl = "Enter a complete HTTP or HTTPS icon URL.";
     }
-  }
-
-  if (
-    !Number.isSafeInteger(values.displayOrder) ||
-    values.displayOrder < 0 ||
-    values.displayOrder > 1_000_000
-  ) {
-    fieldErrors.displayOrder =
-      "Enter a whole-number display order between 0 and 1,000,000.";
   }
 
   if (Object.keys(fieldErrors).length > 0) {

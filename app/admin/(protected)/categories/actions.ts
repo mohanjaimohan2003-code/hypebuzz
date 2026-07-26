@@ -20,7 +20,22 @@ function authorizationError(): CategoryActionState {
   };
 }
 
-function databaseError(error: { code?: string } | null): CategoryActionState {
+type CategoryMutationError = {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function databaseError(error: CategoryMutationError | null, operation: string): CategoryActionState {
+  console.error("Admin category mutation failed", {
+    operation,
+    code: error?.code ?? "unknown",
+    message: error?.message ?? "Unknown database error",
+    details: error?.details ?? null,
+    hint: error?.hint ?? null,
+  });
+
   if (error?.code === "23505") {
     return {
       status: "error",
@@ -42,7 +57,6 @@ function categoryPayload(values: CategoryFormValues) {
     slug: values.slug,
     description: values.description || null,
     image_url: values.iconUrl || null,
-    display_order: values.displayOrder,
     is_active: values.isActive,
   };
 }
@@ -92,14 +106,14 @@ export async function createCategory(
   if (!validation.success) return validation.state;
 
   const conflicts = await findConflicts(validation.data);
-  if (conflicts === null) return databaseError(null);
+  if (conflicts === null) return databaseError(null, "check-create-conflicts");
   if (Object.keys(conflicts).length > 0) {
     return { status: "error", message: "Use a unique name and slug.", fieldErrors: conflicts };
   }
 
   const supabase = await createClient();
   const { error } = await supabase.from("categories").insert(categoryPayload(validation.data));
-  if (error) return databaseError(error);
+  if (error) return databaseError(error, "create");
 
   revalidateCategoryRoutes();
   redirect("/admin/categories?notice=created");
@@ -119,7 +133,7 @@ export async function updateCategory(
   if (!validation.success) return validation.state;
 
   const conflicts = await findConflicts(validation.data, categoryId);
-  if (conflicts === null) return databaseError(null);
+  if (conflicts === null) return databaseError(null, "check-update-conflicts");
   if (Object.keys(conflicts).length > 0) {
     return { status: "error", message: "Use a unique name and slug.", fieldErrors: conflicts };
   }
@@ -132,7 +146,7 @@ export async function updateCategory(
     .select("id")
     .maybeSingle();
 
-  if (error) return databaseError(error);
+  if (error) return databaseError(error, "update");
   if (!data) {
     return { status: "error", message: "The category could not be found.", fieldErrors: {} };
   }
@@ -160,7 +174,7 @@ export async function setCategoryActive(
     .select("id")
     .maybeSingle();
 
-  if (error) return databaseError(error);
+  if (error) return databaseError(error, "set-active");
   if (!data) {
     return { status: "error", message: "The category could not be found.", fieldErrors: {} };
   }

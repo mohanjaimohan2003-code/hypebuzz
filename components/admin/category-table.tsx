@@ -32,10 +32,6 @@ export function CategoryTable({ categories }: { categories: AdminCategoryListIte
                 <dd className="mt-1 font-semibold text-[#111827]">{category.productCount}</dd>
               </div>
               <div>
-                <dt className="text-[#6B7280]">Display order</dt>
-                <dd className="mt-1 font-semibold text-[#111827]">{category.display_order}</dd>
-              </div>
-              <div className="col-span-2">
                 <dt className="text-[#6B7280]">Updated</dt>
                 <dd className="mt-1 font-medium text-[#111827]"><time dateTime={category.updated_at}>{formatDate(category.updated_at)}</time></dd>
               </div>
@@ -49,14 +45,13 @@ export function CategoryTable({ categories }: { categories: AdminCategoryListIte
 
       <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[68rem] border-collapse text-left">
-          <caption className="sr-only">Categories sorted by display order</caption>
+          <caption className="sr-only">Categories sorted by name</caption>
           <thead className="bg-[#F8FAFC] text-xs font-semibold uppercase tracking-wide text-[#6B7280]">
             <tr>
               <th className="px-5 py-3" scope="col">Name</th>
               <th className="px-5 py-3" scope="col">Slug</th>
               <th className="px-5 py-3" scope="col">Product count</th>
               <th className="px-5 py-3" scope="col">Status</th>
-              <th className="px-5 py-3" scope="col">Display order</th>
               <th className="px-5 py-3" scope="col">Updated</th>
               <th className="px-5 py-3" scope="col">Actions</th>
             </tr>
@@ -68,7 +63,6 @@ export function CategoryTable({ categories }: { categories: AdminCategoryListIte
                 <td className="px-5 py-4 text-sm text-[#6B7280]">/{category.slug}</td>
                 <td className="px-5 py-4 text-sm font-semibold text-[#111827]">{category.productCount}</td>
                 <td className="px-5 py-4"><CategoryStatusBadge isActive={category.is_active} /></td>
-                <td className="px-5 py-4 text-sm font-semibold text-[#111827]">{category.display_order}</td>
                 <td className="px-5 py-4 text-sm text-[#6B7280]"><time dateTime={category.updated_at}>{formatDate(category.updated_at)}</time></td>
                 <td className="px-5 py-4"><CategoryActions categoryId={category.id} categoryName={category.name} isActive={category.is_active} /></td>
               </tr>

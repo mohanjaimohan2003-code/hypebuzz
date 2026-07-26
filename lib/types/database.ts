@@ -42,7 +42,6 @@ export type Category = {
   slug: string;
   description: string | null;
   image_url: string | null;
-  display_order: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -101,6 +100,8 @@ export type ProductOffer = {
   currency: string;
   availability: string | null;
   coupon_note: string | null;
+  shipping_note: string | null;
+  offer_title: string | null;
   is_active: boolean;
   last_checked_at: string | null;
   created_at: string;
@@ -207,6 +208,7 @@ export type Database = {
       };
       delete_failed_product: { Args: { p_product_id: string }; Returns: undefined };
       replace_product_images: { Args: { p_product_id: string; p_images: Json }; Returns: undefined };
+      replace_product_offers: { Args: { p_product_id: string; p_offers: Json }; Returns: undefined };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

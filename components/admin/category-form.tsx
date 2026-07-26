@@ -18,7 +18,6 @@ export type CategoryFormInitialCategory = {
   slug: string;
   description: string;
   iconUrl: string;
-  displayOrder: number;
   isActive: boolean;
 };
 
@@ -136,26 +135,6 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
             <FieldError error={state.fieldErrors.iconUrl} field="iconUrl" />
           </div>
 
-          <div>
-            <label className="text-sm font-semibold text-[#111827]" htmlFor="category-display-order">Display order</label>
-            <input
-              aria-describedby={describedBy("displayOrder", "category-display-order-hint")}
-              aria-invalid={Boolean(state.fieldErrors.displayOrder)}
-              className={inputClass}
-              defaultValue={category?.displayOrder ?? 0}
-              disabled={isPending}
-              id="category-display-order"
-              inputMode="numeric"
-              max={1000000}
-              min={0}
-              name="displayOrder"
-              required
-              step={1}
-              type="number"
-            />
-            <p className="mt-2 text-xs leading-5 text-[#6B7280]" id="category-display-order-hint">Lower numbers appear first.</p>
-            <FieldError error={state.fieldErrors.displayOrder} field="displayOrder" />
-          </div>
         </div>
       </fieldset>
 

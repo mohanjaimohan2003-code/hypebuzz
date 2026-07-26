@@ -49,7 +49,7 @@ export default async function AdminCategoriesPage({ searchParams }: { searchPara
       </header>
 
       {notice ? <div className="mt-6 rounded-[10px] border border-[#BBF7D0] bg-[#F0FDF4] px-4 py-3 text-sm font-medium text-[#166534]" role="status">{notice}</div> : null}
-      {hasError ? <div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">Categories could not be loaded. Check the Supabase connection and admin category policies, then try again.</div> : null}
+      {hasError ? <div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">Category records could not be read. Try again, then check the server log for the category query error if the problem continues.</div> : null}
 
       <form action="/admin/categories" className="mt-8 grid gap-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_14rem_auto_auto] lg:items-end" method="get" role="search">
         <div>

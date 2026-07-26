@@ -12,7 +12,6 @@ export type AdminCategoryListItem = Pick<
   | "name"
   | "slug"
   | "is_active"
-  | "display_order"
   | "updated_at"
 > & { productCount: number };
 
@@ -23,7 +22,6 @@ export type AdminCategoryEditorCategory = Pick<
   | "slug"
   | "description"
   | "image_url"
-  | "display_order"
   | "is_active"
 >;
 
@@ -33,11 +31,33 @@ type CategoryListRow = Pick<
   | "name"
   | "slug"
   | "is_active"
-  | "display_order"
   | "updated_at"
 > & { products: Array<{ count: number }> };
 
 export type CategoryStatusFilter = "all" | "active" | "inactive";
+
+type CategoryQueryError = {
+  code?: string;
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function logCategoryQueryError(
+  operation: string,
+  error: CategoryQueryError | null,
+  httpStatus?: number,
+) {
+  if (!error) return;
+  console.error("Admin category query failed", {
+    operation,
+    code: error.code ?? "unknown",
+    message: error.message ?? "Unknown database error",
+    details: error.details ?? null,
+    hint: error.hint ?? null,
+    httpStatus: httpStatus ?? null,
+  });
+}
 
 export function parseCategoryStatusFilter(
   value: string | undefined,
@@ -66,8 +86,7 @@ export async function getAdminCategories({
   const supabase = await createClient();
   let query = supabase
     .from("categories")
-    .select("id, name, slug, is_active, display_order, updated_at, products(count)")
-    .order("display_order", { ascending: true })
+    .select("id, name, slug, is_active, updated_at, products(count)")
     .order("name", { ascending: true });
 
   if (search) {
@@ -78,7 +97,8 @@ export async function getAdminCategories({
     query = query.eq("is_active", status === "active");
   }
 
-  const { data, error } = await query.returns<CategoryListRow[]>();
+  const { data, error, status: httpStatus } = await query.returns<CategoryListRow[]>();
+  logCategoryQueryError("list", error, httpStatus);
 
   return {
     categories: error
@@ -89,7 +109,6 @@ export async function getAdminCategories({
             name: category.name,
             slug: category.slug,
             is_active: category.is_active,
-            display_order: category.display_order,
             updated_at: category.updated_at,
             productCount: category.products[0]?.count ?? 0,
           }),
@@ -108,9 +127,11 @@ export async function getAdminCategory(categoryId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
-    .select("id, name, slug, description, image_url, display_order, is_active")
+    .select("id, name, slug, description, image_url, is_active")
     .eq("id", categoryId)
     .maybeSingle<AdminCategoryEditorCategory>();
+
+  logCategoryQueryError("get", error);
 
   return { category: error ? null : data, hasError: Boolean(error) };
 }
