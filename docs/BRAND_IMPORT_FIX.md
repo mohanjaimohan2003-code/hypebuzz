@@ -12,9 +12,9 @@ Migration 001 defines `brands.id` as a generated UUID primary key, unique non-nu
 
 No optional migration-009 column is assumed. Existing case-insensitive/normalized matching runs before insert. A `23505` race re-queries and selects the concurrently created brand.
 
-## RLS
+## Authentication path
 
-Repository migrations 003 and 007 define active-admin SELECT/INSERT/UPDATE access through `admin_users`, with no anonymous writes. Proposed idempotent migration `023_ensure_admin_brand_access.sql` ensures those grants/policies exist in production without disabling RLS or changing public write access. Apply it only after review in the production SQL Editor.
+Production SQL testing proved the brand grants, RLS policies, and active `admin_users` row work. The importer action now creates one request-scoped cookie-aware Supabase server client, verifies it with `auth.getUser()`, queries `admin_users` with that same client, and reuses it for matching and insertion. Missing/expired sessions and inactive/non-admin identities stop before insertion with accurate messages. No RLS migration or policy change is included.
 
 ## Failure and retry behavior
 
@@ -26,7 +26,6 @@ Complete insert diagnostics (`code`, `message`, `details`, `hint`) are logged se
 - `components/admin/product-json-importer.tsx`
 - `lib/admin/product-import/brand-error.ts`
 - `tests/product-json-import.test.ts`
-- `supabase/migrations/023_ensure_admin_brand_access.sql`
 - this document
 
 ## Verification

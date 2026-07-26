@@ -9,6 +9,7 @@ import { cleanImportedReferenceDisplayName, matchImportReference } from "../lib/
 import { parseProductImportJson } from "../lib/admin/product-import/schema";
 import { matchImportedCategory } from "../lib/catalog/category-mapping";
 import { importedBrandProductionError } from "../lib/admin/product-import/brand-error";
+import { assessAdminIdentity } from "../lib/auth/admin-identity";
 
 const references = {
   categories: [{ id: "category-1", name: "Sports Shoes", slug: "sports-shoes", isActive: true }],
@@ -89,6 +90,14 @@ test("brand insert failures produce useful safe causes", () => {
   assert.equal(importedBrandProductionError({ code: "42501" }, "ASIAN"), "Brand creation was blocked by admin permissions.");
   assert.equal(importedBrandProductionError({ code: "PGRST204" }, "ASIAN"), "Brand could not be created because a required database field is missing.");
   assert.match(importedBrandProductionError({ code: "XX000" }, "ASIAN"), /Retry/);
+});
+
+test("brand creation authentication distinguishes missing, inactive, non-admin, and active admin sessions", () => {
+  assert.match(assessAdminIdentity({ userId: null, authFailed: false, admin: null, adminLookupFailed: false }).message, /missing or expired/);
+  assert.match(assessAdminIdentity({ userId: "user", authFailed: true, admin: null, adminLookupFailed: false }).message, /missing or expired/);
+  assert.equal(assessAdminIdentity({ userId: "user", authFailed: false, admin: { user_id: "user", role: "admin", is_active: false }, adminLookupFailed: false }).allowed, false);
+  assert.equal(assessAdminIdentity({ userId: "user", authFailed: false, admin: { user_id: "user", role: "editor", is_active: true }, adminLookupFailed: false }).allowed, false);
+  assert.equal(assessAdminIdentity({ userId: "user", authFailed: false, admin: { user_id: "user", role: "admin", is_active: true }, adminLookupFailed: false }).allowed, true);
 });
 
 test("numeric and formatted rupee prices normalize safely", () => {

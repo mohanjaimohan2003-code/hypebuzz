@@ -10,6 +10,7 @@ import { richFieldsDatabasePayload } from "@/lib/products/rich-fields";
 import { cleanImportedReferenceDisplayName, normalizeReferenceName } from "@/lib/admin/product-import/match-record";
 import { createBrandSlug } from "@/lib/validation/brand";
 import { importedBrandProductionError } from "@/lib/admin/product-import/brand-error";
+import { assessAdminIdentity } from "@/lib/auth/admin-identity";
 import {
   isUuid,
   validateProductForm,
@@ -165,12 +166,42 @@ function cleanImportedBrandName(value: string) {
 }
 
 export async function resolveOrCreateImportedBrand(rawName: string): Promise<ImportedBrandResolution> {
-  if (!(await isAuthorizedAdmin())) return { status: "error", message: "Your admin session is not authorized to create brands." };
+  // Use one request-scoped cookie-aware client for authentication, admin
+  // authorization, matching, and insertion. This prevents the write from
+  // drifting onto a separate client whose session has not been verified.
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  console.info("Imported brand authentication", {
+    getUserReturnedUser: Boolean(user),
+    userId: user?.id ?? null,
+    authErrorCode: authError?.code ?? null,
+    authErrorMessage: authError?.message ?? null,
+  });
+  if (authError || !user) return { status: "error", message: assessAdminIdentity({ userId: user?.id ?? null, authFailed: Boolean(authError), admin: null, adminLookupFailed: false }).message };
+
+  const adminResult = await supabase.from("admin_users")
+    .select("user_id, role, is_active")
+    .eq("user_id", user.id)
+    .maybeSingle<{ user_id: string; role: string; is_active: boolean }>();
+  console.info("Imported brand admin authorization", {
+    userId: user.id,
+    adminRowFound: Boolean(adminResult.data),
+    adminRole: adminResult.data?.role ?? null,
+    adminIsActive: adminResult.data?.is_active ?? null,
+    lookupErrorCode: adminResult.error?.code ?? null,
+    lookupErrorMessage: adminResult.error?.message ?? null,
+  });
+  if (adminResult.error) {
+    logSupabaseError("verify imported brand admin", adminResult.error);
+    return { status: "error", message: assessAdminIdentity({ userId: user.id, authFailed: false, admin: null, adminLookupFailed: true }).message };
+  }
+  const identity = assessAdminIdentity({ userId: user.id, authFailed: false, admin: adminResult.data, adminLookupFailed: false });
+  if (!identity.allowed) return { status: "error", message: identity.message };
+
   const name = cleanImportedBrandName(rawName);
   const slug = createBrandSlug(name);
   if (name.length < 2 || !slug) return { status: "error", message: "The imported brand name is not valid." };
 
-  const supabase = await createClient();
   async function findMatches() {
     const result = await supabase.from("brands").select("id, name, slug, is_active").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>();
     if (result.error) return { error: result.error, matches: [] as ImportedBrandReference[] };
