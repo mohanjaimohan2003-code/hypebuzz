@@ -30,6 +30,11 @@ test("valid complete JSON normalizes and prepares matching form fields", () => {
   assert.equal(preview.application.categoryId, "category-1");
   assert.equal(preview.application.brandId, "brand-1");
   assert.equal(preview.application.offer?.merchantId, "merchant-1");
+  assert.equal(preview.application.offer?.affiliateUrl, productImportExample.affiliateUrl);
+  assert.equal(preview.application.offer?.currentPrice, productImportExample.currentPrice);
+  assert.equal(preview.application.offer?.originalPrice, productImportExample.originalPrice);
+  assert.equal(preview.application.status, productImportExample.status);
+  assert.equal(preview.application.subcategory, productImportExample.subcategory ?? productImportExample.category);
   assert.equal(preview.product.highlights?.length, 4);
   assert.equal(Object.keys(preview.product.specifications ?? {}).length, 6);
 });

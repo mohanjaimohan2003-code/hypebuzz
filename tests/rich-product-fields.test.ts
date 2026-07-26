@@ -39,6 +39,15 @@ test("creating without optional rich fields remains valid", () => {
   if (result.success) assert.deepEqual(richFieldsDatabasePayload(result.data), { description: null, highlights: [], specifications: {}, seo_title: null, seo_description: null });
 });
 
+test("draft and publish validation return exact field reasons", () => {
+  const draft = new FormData(); draft.set("status", "draft"); draft.set("imageManifest", "[]"); draft.set("offerManifest", "[]");
+  const draftResult = validateProductForm(draft); assert.equal(draftResult.success, false);
+  if (!draftResult.success) { assert.equal(draftResult.state.message, "Draft cannot be saved:"); assert.ok(draftResult.state.fieldErrors.name); assert.ok(draftResult.state.fieldErrors.slug); assert.ok(draftResult.state.fieldErrors.categoryId); }
+  const publish = productForm(); publish.set("status", "published");
+  const publishResult = validateProductForm(publish); assert.equal(publishResult.success, false);
+  if (!publishResult.success) { assert.equal(publishResult.state.message, "Product cannot be published:"); assert.ok(publishResult.state.fieldErrors.offerList); }
+});
+
 test("editing rich fields parses replacement values", () => {
   const parsed = parseProductRichFields(productForm({ longDescription: "Updated", highlights: ["New"], specifications: [{ label: "Colour", value: "Blue" }], seoTitle: "Updated title" }));
   assert.equal(parsed.values.longDescription, "Updated");

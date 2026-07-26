@@ -167,7 +167,7 @@ export function validateProductForm(formData: FormData):
   const usedMerchants = new Set<string>();
   for (const [index, offer] of offers.entries()) {
     const label = `Offer ${index + 1}`;
-    if (!offer || !isOfferUuid(offer.id) || !isOfferUuid(offer.merchantId)) { fieldErrors.offerList = `${label}: select a valid merchant.`; break; }
+    if (!offer || !isOfferUuid(offer.id) || !isOfferUuid(offer.merchantId)) { fieldErrors.merchantId = `${label}: select a valid merchant.`; fieldErrors.offerList = fieldErrors.merchantId; break; }
     const contractError = validateOfferContract({
       affiliateUrl: offer.affiliateUrl,
       currentPrice: offer.currentPrice,
@@ -177,7 +177,15 @@ export function validateProductForm(formData: FormData):
       isActive: false,
       merchantIsActive: true,
     })[0];
-    if (contractError) { fieldErrors.offerList = `${label}: ${publicationErrorMessages[contractError]}`; break; }
+    if (contractError) {
+      const reason = `${label}: ${publicationErrorMessages[contractError]}`;
+      const target: Partial<Record<typeof contractError, ProductField>> = {
+        OFFER_URL_INVALID: "affiliateUrl", OFFER_CURRENT_PRICE_INVALID: "currentPrice",
+        OFFER_ORIGINAL_PRICE_INVALID: "originalPrice", OFFER_CURRENCY_INVALID: "currency",
+        OFFER_AVAILABILITY_INVALID: "stockStatus", OFFER_MERCHANT_INACTIVE: "merchantId",
+      };
+      fieldErrors[target[contractError] ?? "offerList"] = reason; fieldErrors.offerList = reason; break;
+    }
     if (offer.couponCode.length > 100 || offer.shippingNote.length > 300 || offer.offerTitle.length > 160) { fieldErrors.offerList = `${label}: optional offer details are too long.`; break; }
     if (offer.lastCheckedAt && Number.isNaN(new Date(offer.lastCheckedAt).getTime())) { fieldErrors.offerList = `${label}: enter a valid last checked date.`; break; }
     if (usedMerchants.has(offer.merchantId)) { fieldErrors.offerList = "This project supports only one offer per product and merchant."; break; }
@@ -195,11 +203,12 @@ export function validateProductForm(formData: FormData):
   }))) fieldErrors.offerList = publicationErrorMessages.PRODUCT_OFFER_REQUIRED;
 
   if (Object.keys(fieldErrors).length > 0) {
+    if (process.env.NODE_ENV === "development") console.error("Product validation failed", { validationMode: values.status === "published" ? "publish" : "draft", fieldErrors });
     return {
       success: false,
       state: {
         status: "error",
-        message: "Review the highlighted fields and try again.",
+        message: values.status === "published" ? "Product cannot be published:" : "Draft cannot be saved:",
         fieldErrors,
       },
     };

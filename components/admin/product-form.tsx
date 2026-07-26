@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   createProduct,
   resolveOrCreateImportedBrand,
@@ -58,6 +58,7 @@ type ProductFormProps = {
 };
 
 const inputClass = "mt-2 min-h-12 w-full rounded-[10px] border border-[#D1D5DB] bg-white px-4 text-sm text-[#111827] outline-none transition-colors placeholder:text-[#6B7280] hover:border-[#9CA3AF] focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB] focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-[#F3F4F6] motion-reduce:transition-none";
+const fieldElementIds: Partial<Record<ProductField, string>> = { name:"product-name",slug:"product-slug",shortDescription:"product-description",categoryId:"product-category",brandId:"product-brand",longDescription:"product-long-description",highlights:"product-highlights-section",specifications:"product-specifications-section",imageUrl:"product-images-section",merchantId:"product-offer-merchant-0",affiliateUrl:"product-offer-url-0",currentPrice:"product-offer-current-0",originalPrice:"product-offer-original-0",currency:"product-offer-currency-0",stockStatus:"product-offer-stock-0",offerList:"product-offers-section",status:"product-status",seoTitle:"product-seo-title",seoDescription:"product-seo-description" };
 
 function FieldError({ field, error }: { field: ProductField; error?: string }) {
   return error ? <p className="mt-2 text-sm font-medium text-[#B91C1C]" id={`${field}-error`}>{error}</p> : null;
@@ -81,9 +82,23 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   const [isTrending, setIsTrending] = useState(product?.isTrending ?? false);
   const [slugWasEdited, setSlugWasEdited] = useState(mode === "edit");
   const detailsRef = useRef<HTMLFieldSetElement>(null);
+  const richDetailsRef = useRef<HTMLDetailsElement>(null);
+  const seoDetailsRef = useRef<HTMLDetailsElement>(null);
   const offersRef = useRef<ProductOffersFieldHandle>(null);
   const action = mode === "create" ? createProduct : updateProduct.bind(null, product?.id ?? "");
   const [state, formAction, isPending] = useActionState(action, initialProductActionState);
+  const validationErrors = Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
+  const uniqueValidationErrors = validationErrors.filter(([field, reason], index, all) => all.findIndex(([, candidate]) => candidate === reason) === index && Boolean(field));
+
+  useEffect(() => {
+    const currentErrors = Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
+    if (state.status !== "error" || currentErrors.length === 0) return;
+    if (currentErrors.some(([field]) => ["longDescription","highlights","specifications"].includes(field))) richDetailsRef.current?.setAttribute("open", "");
+    if (currentErrors.some(([field]) => ["seoTitle","seoDescription"].includes(field))) seoDetailsRef.current?.setAttribute("open", "");
+    const firstId = fieldElementIds[currentErrors[0][0]];
+    const element = firstId ? document.getElementById(firstId) : null;
+    requestAnimationFrame(() => { element?.scrollIntoView({ behavior:"smooth",block:"center" }); element?.focus({ preventScroll:true }); });
+  }, [state.status, state.fieldErrors]);
 
   function describedBy(field: ProductField, hintId?: string) {
     const errorId = state.fieldErrors[field] ? `${field}-error` : "";
@@ -114,7 +129,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   }
 
   return (
-    <form action={formAction} className="mt-8 space-y-8">
+    <form action={formAction} className="mt-8 space-y-8" noValidate>
       {product?.status === "archived" ? (
         <div className="rounded-[10px] border border-[#D1D5DB] bg-[#F3F4F6] px-4 py-3 text-sm text-[#374151]">
           This product is archived. Saving it as Draft or Published will reactivate it.
@@ -123,7 +138,8 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
 
       {state.status === "error" ? (
         <div aria-live="polite" className="rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">
-          {state.message}
+          <p className="font-bold">{state.message}</p>
+          {uniqueValidationErrors.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{uniqueValidationErrors.map(([field, reason]) => <li key={field}><a className="underline underline-offset-2" href={`#${fieldElementIds[field] ?? "product-form-errors"}`}>{reason}</a></li>)}</ul> : null}
         </div>
       ) : null}
 
@@ -231,7 +247,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
         </div>
       </fieldset>
 
-      <details className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)]" open>
+      <details className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)]" open ref={richDetailsRef}>
         <summary className="min-h-14 cursor-pointer px-5 py-4 text-lg font-bold text-[#111827] sm:px-6">Rich product content</summary>
         <div className="space-y-7 border-t border-[#E5E7EB] p-5 sm:p-6">
           <div>
@@ -240,12 +256,12 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
             <div className="mt-2 flex justify-between gap-3 text-xs text-[#6B7280]"><span>Plain text only.</span><span>{longDescription.length.toLocaleString()} / 10,000</span></div>
             <FieldError error={state.fieldErrors.longDescription} field="longDescription" />
           </div>
-          <div>
+          <div id="product-highlights-section" tabIndex={-1}>
             <h3 className="text-sm font-semibold">Highlights</h3>
             <input name="highlightsManifest" type="hidden" value={JSON.stringify(highlights)} />
             <div className="mt-3"><ProductHighlightsField disabled={isPending} error={state.fieldErrors.highlights} onChange={setHighlights} values={highlights} /></div>
           </div>
-          <div>
+          <div id="product-specifications-section" tabIndex={-1}>
             <h3 className="text-sm font-semibold">Specifications</h3>
             <input name="specificationsManifest" type="hidden" value={JSON.stringify(specificationRows.map(({ label, value }) => ({ label, value })))} />
             <div className="mt-3"><ProductSpecificationsField disabled={isPending} error={state.fieldErrors.specifications} onChange={setSpecificationRows} rows={specificationRows} /></div>
@@ -255,7 +271,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
 
       <ProductImagesField disabled={isPending} error={state.fieldErrors.imageUrl} initialImages={product?.images ?? []} />
 
-      <ProductOffersField disabled={isPending} error={state.fieldErrors.offerList} initialOffers={product?.offers ?? []} merchants={merchants} ref={offersRef} />
+      <ProductOffersField disabled={isPending} error={state.fieldErrors.offerList} fieldErrors={state.fieldErrors} initialOffers={product?.offers ?? []} merchants={merchants} ref={offersRef} />
 
       <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6">
         <legend className="px-1 text-lg font-bold text-[#111827]">Publishing</legend>
@@ -292,7 +308,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
         </div>
       </fieldset>
 
-      <details className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)]">
+      <details className="rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_1px_2px_rgba(17,24,39,0.04)]" ref={seoDetailsRef}>
         <summary className="min-h-14 cursor-pointer px-5 py-4 text-lg font-bold text-[#111827] sm:px-6">Search appearance</summary>
         <div className="grid gap-6 border-t border-[#E5E7EB] p-5 sm:p-6 lg:grid-cols-2">
           <div>

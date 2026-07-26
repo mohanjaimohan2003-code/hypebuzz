@@ -199,7 +199,7 @@ export function ProductImagesField({
   }
 
   return (
-    <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6">
+    <fieldset className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6" id="product-images-section" tabIndex={-1}>
       <legend className="px-1 text-lg font-bold">Product images</legend>
       <p className="mt-2 text-sm text-[#6B7280]">Upload images, add external URLs, or use both. Maximum 8 images and 5 MB each.</p>
       <input name="imageManifest" type="hidden" value={JSON.stringify(manifest)} />

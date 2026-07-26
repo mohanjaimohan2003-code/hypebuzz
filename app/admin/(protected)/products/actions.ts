@@ -129,7 +129,7 @@ function databaseError(
   if (error?.code === "42501") {
     return {
       status: "error",
-      message: "Your database grants or admin RLS policies do not allow this catalog change.",
+      message: `Catalog change rejected by Supabase (${error.code}: ${error.message ?? "permission denied"}).`,
       fieldErrors: {},
     };
   }
