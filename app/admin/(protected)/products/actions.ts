@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import type { Json, ProductImage } from "@/lib/types/database";
+import type { Json, ProductImage, ProductStatus } from "@/lib/types/database";
 import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/offers/publication-contract";
 import { cleanImportedReferenceDisplayName, normalizeReferenceName } from "@/lib/admin/product-import/match-record";
 import { createBrandSlug } from "@/lib/validation/brand";
@@ -643,4 +643,60 @@ export async function archiveProduct(
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=archived");
+}
+
+export async function permanentlyDeleteProduct(
+  productId: string,
+  _previousState: ProductActionState,
+  formData: FormData,
+): Promise<ProductActionState> {
+  const auth = await inspectProductAuthContext();
+  if (!auth.authenticated) return expiredSessionError();
+  if (!auth.activeAdmin) return authorizationError();
+  if (!isUuid(productId)) return { status: "error", message: "Product not found.", fieldErrors: {} };
+  if (String(formData.get("confirmation") ?? "") !== "DELETE") {
+    return { status: "error", message: "Type DELETE exactly to confirm permanent deletion.", fieldErrors: {} };
+  }
+
+  const { supabase } = auth;
+  const productResult = await supabase.from("products")
+    .select("id, status")
+    .eq("id", productId)
+    .maybeSingle<{ id: string; status: ProductStatus }>();
+  if (productResult.error) {
+    if (productResult.error.code === "42501") return { status: "error", message: "Permission denied while checking this product.", fieldErrors: {} };
+    return { status: "error", message: "Database deletion failed while checking this product.", fieldErrors: {} };
+  }
+  if (!productResult.data) return { status: "error", message: "Product not found.", fieldErrors: {} };
+  if (productResult.data.status !== "archived") {
+    return { status: "error", message: "Only archived products can be permanently deleted.", fieldErrors: {} };
+  }
+
+  const imagesResult = await supabase.from("product_images")
+    .select("storage_path")
+    .eq("product_id", productId)
+    .not("storage_path", "is", null)
+    .returns<Array<{ storage_path: string | null }>>();
+  if (imagesResult.error) return { status: "error", message: "Database deletion failed while loading uploaded images.", fieldErrors: {} };
+  const storagePaths = [...new Set((imagesResult.data ?? []).flatMap((image) => image.storage_path ? [image.storage_path] : []))];
+  if (storagePaths.length) {
+    const storageResult = await supabase.storage.from(IMAGE_BUCKET).remove(storagePaths);
+    if (storageResult.error) {
+      logSupabaseError("delete archived product storage objects", storageResult.error);
+      return { status: "error", message: "Storage deletion failed. The product was not deleted.", fieldErrors: {} };
+    }
+  }
+
+  const deleted = await supabase.rpc("permanently_delete_archived_product", { p_product_id: productId });
+  if (deleted.error) {
+    logSupabaseError("permanently delete archived product", deleted.error);
+    if (deleted.error.code === "42501") return { status: "error", message: "Permission denied. Active admin access is required.", fieldErrors: {} };
+    if (deleted.error.code === "P0002") return { status: "error", message: "Product not found.", fieldErrors: {} };
+    if (deleted.error.code === "55000") return { status: "error", message: "Only archived products can be permanently deleted.", fieldErrors: {} };
+    if (deleted.error.code === "23503") return { status: "error", message: "A related record prevented deletion. No database rows were deleted.", fieldErrors: {} };
+    return { status: "error", message: `Database deletion failed (${deleted.error.code ?? "unknown"}: ${deleted.error.message}).`, fieldErrors: {} };
+  }
+
+  revalidateProductRoutes();
+  redirect("/admin/products?notice=deleted");
 }

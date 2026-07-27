@@ -20,6 +20,7 @@ const notices: Record<string, string> = {
   created: "Product created successfully.",
   updated: "Product updated successfully.",
   archived: "Product archived successfully.",
+  deleted: "Product permanently deleted. Its slug is now available.",
 };
 
 function getFirst(value: string | string[] | undefined) {
