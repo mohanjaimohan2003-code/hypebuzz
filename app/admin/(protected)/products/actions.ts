@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, ProductImage } from "@/lib/types/database";
 import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/offers/publication-contract";
-import { richFieldsDatabasePayload } from "@/lib/products/rich-fields";
 import { cleanImportedReferenceDisplayName, normalizeReferenceName } from "@/lib/admin/product-import/match-record";
 import { createBrandSlug } from "@/lib/validation/brand";
 import { importedBrandProductionError } from "@/lib/admin/product-import/brand-error";
@@ -220,6 +219,24 @@ function databaseError(
   };
 }
 
+function productInsertError(error: SupabaseDatabaseError, payloadKeys: string[]): ProductActionState {
+  logSupabaseError("insert products", error);
+  return {
+    status: "error",
+    message: [
+      "Product insert failed",
+      `PostgreSQL code: ${error.code ?? "unknown"}`,
+      `Message: ${error.message ?? "Unknown database error."}`,
+      `Details: ${error.details ?? "None"}`,
+      `Hint: ${error.hint ?? "None"}`,
+      `Payload keys: ${payloadKeys.join(", ")}`,
+    ].join("\n"),
+    fieldErrors: error.code === "23505" ? { slug: "This slug or another unique value already exists." }
+      : error.code === "23503" ? { categoryId: "The selected category or brand is invalid." }
+      : {},
+  };
+}
+
 function revalidateProductRoutes() {
   revalidatePath("/admin");
   revalidatePath("/admin/products", "layout");
@@ -357,7 +374,7 @@ async function categoryExists(supabase: ProductSupabaseClient, categoryId: strin
   return { exists: Boolean(data), active: data?.is_active === true };
 }
 
-async function saveProductWithOffer(supabase: ProductSupabaseClient, productId: string | null, values: ProductFormValues, formData: FormData, primaryImageUrl: string | null = null) {
+async function saveProductWithOffer(supabase: ProductSupabaseClient, userId: string, productId: string | null, values: ProductFormValues, formData: FormData, primaryImageUrl: string | null = null) {
   const offerIdValue = String(formData.get("offerId") ?? "").trim();
   const primaryOffer = values.offers.find((offer) => isOfferEligibleForPublication({
     affiliateUrl: offer.affiliateUrl,
@@ -371,6 +388,17 @@ async function saveProductWithOffer(supabase: ProductSupabaseClient, productId: 
   })) ?? values.offers[0];
   const offerId = primaryOffer?.persisted === true && isUuid(primaryOffer.id) ? primaryOffer.id : (isUuid(offerIdValue) ? offerIdValue : null);
   const hasOffer = Boolean(primaryOffer);
+  const productPayloadKeys = ["name", "slug", "short_description", "category_id", "primary_image_url", "is_featured", "is_trending", "status"];
+  console.info("Product insert diagnostic", {
+    authenticatedUserId: userId,
+    expectedAdminUserId: "52cef260-f9db-4f9b-b970-08761a0aaae5",
+    authenticatedUserMatchesExpectedAdmin: userId === "52cef260-f9db-4f9b-b970-08761a0aaae5",
+    payloadColumnNames: productPayloadKeys,
+    slug: values.slug,
+    category_id: values.categoryId,
+    brand_id: values.brandId,
+    status: values.status,
+  });
   const result = await supabase.rpc("save_product_with_offer", {
     p_product_id: productId,
     p_name: values.name,
@@ -390,7 +418,15 @@ async function saveProductWithOffer(supabase: ProductSupabaseClient, productId: 
     p_availability: hasOffer ? primaryOffer.stockStatus : null,
     p_offer_is_active: hasOffer ? primaryOffer.isActive : null,
   });
-  if (result.error) logSupabaseError(productId ? "update products via save_product_with_offer" : "insert products via save_product_with_offer", result.error);
+  if (result.error) {
+    console.error("Product insert failed", {
+      payloadColumnNames: productPayloadKeys,
+      code: result.error.code,
+      message: result.error.message,
+      details: result.error.details,
+      hint: result.error.hint,
+    });
+  }
   return result;
 }
 
@@ -414,11 +450,13 @@ async function validateProductOfferMerchants(supabase: ProductSupabaseClient, va
 }
 
 async function saveProductDetails(supabase: ProductSupabaseClient, productId: string, values: ProductFormValues) {
-  const result = await supabase.from("products").update({
-    brand_id: values.brandId || null,
-    ...richFieldsDatabasePayload(values),
-  }).eq("id", productId).select("id").maybeSingle();
-  if (result.error) logSupabaseError("update products rich fields (description, highlights, specifications, SEO)", result.error);
+  const supportedPayload: Record<string, string | Json> = {
+    brand_id: values.brandId,
+    specifications: values.specifications as Json,
+  };
+  if (values.longDescription) supportedPayload.description = values.longDescription;
+  const result = await supabase.from("products").update(supportedPayload).eq("id", productId).select("id").maybeSingle();
+  if (result.error) logSupabaseError("update supported product details", result.error);
   return result;
 }
 
@@ -508,12 +546,12 @@ export async function createProduct(
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
   const initialPrimary = validation.data.imageManifest.find(x=>x.isPrimary&&x.kind==="external")?.url ?? validation.data.imageManifest.find(x=>x.kind==="external")?.url ?? null;
-  const { data, error } = await saveProductWithOffer(supabase, null, validation.data, formData, initialPrimary);
-
-  if (error) return databaseError(error, "insert products via save_product_with_offer");
-  if (!data) return { status:"error",message:"The product could not be created.",fieldErrors:{} };
+  const productPayloadKeys = ["name", "slug", "short_description", "category_id", "primary_image_url", "is_featured", "is_trending", "status"];
+  const { data, error } = await saveProductWithOffer(supabase, auth.userId!, null, validation.data, formData, initialPrimary);
+  if (error) return productInsertError(error, productPayloadKeys);
+  if (!data) return { status:"error",message:"Product insert failed\nPostgreSQL code: unknown\nMessage: Supabase returned no product ID.\nDetails: None\nHint: None\nPayload keys: " + productPayloadKeys.join(", "),fieldErrors:{} };
   const brandResult = await saveProductDetails(supabase, data, validation.data);
-  if (brandResult.error || !brandResult.data) { const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after rich-field update",cleanup.error); return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)"); }
+  if (brandResult.error || !brandResult.data) { const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after supported product detail update",cleanup.error); return databaseError(brandResult.error, "update supported product details"); }
   const imageError=await syncProductImages(supabase,data,validation.data.name,validation.data,formData);
   if(imageError){const cleanup=await supabase.rpc("delete_failed_product",{p_product_id:data});if(cleanup.error)logSupabaseError("delete failed product after image failure",cleanup.error);return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
   const offerError = await syncProductOffers(supabase, data, validation.data);
@@ -560,7 +598,7 @@ export async function updateProduct(
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
   const current=await supabase.from("products").select("primary_image_url").eq("id",productId).maybeSingle<{primary_image_url:string|null}>();
-  const { data, error } = await saveProductWithOffer(supabase, productId, validation.data, formData, current.data?.primary_image_url??null);
+  const { data, error } = await saveProductWithOffer(supabase, auth.userId!, productId, validation.data, formData, current.data?.primary_image_url??null);
 
   if (error) return databaseError(error, "update products via save_product_with_offer");
   if (!data) {

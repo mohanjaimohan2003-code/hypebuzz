@@ -139,7 +139,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
 
       {showValidationBanner || showGeneralError ? (
         <div aria-live="polite" className="rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">
-          <p className="font-bold">{state.message}</p>
+          <p className="whitespace-pre-line font-bold">{state.message}</p>
           {showValidationBanner ? <ul className="mt-2 list-disc space-y-1 pl-5">{uniqueValidationErrors.map(([field, reason]) => <li key={field}><a className="underline underline-offset-2" href={`#${fieldElementIds[field] ?? "product-form-errors"}`}>{reason}</a></li>)}</ul> : null}
         </div>
       ) : null}
