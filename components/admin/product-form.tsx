@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
 import {
   createProduct,
-  resolveOrCreateImportedBrand,
   updateProduct,
 } from "@/app/admin/(protected)/products/actions";
 import type { AdminBrandOption, AdminCategoryOption, AdminMerchantOption } from "@/lib/data/admin-products";
@@ -65,7 +64,7 @@ function FieldError({ field, error }: { field: ProductField; error?: string }) {
 }
 
 export function ProductForm({ mode, categories, brands, merchants, product }: ProductFormProps) {
-  const [availableBrands, setAvailableBrands] = useState(brands);
+  const [availableBrands] = useState(brands);
   const [name, setName] = useState(product?.name ?? "");
   const [slug, setSlug] = useState(product?.slug ?? "");
   const [shortDescription, setShortDescription] = useState(product?.shortDescription ?? "");
@@ -77,6 +76,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
   const [importedSubcategory, setImportedSubcategory] = useState("");
   const [brandId, setBrandId] = useState(product?.brandId ?? "");
+  const [importedBrandName, setImportedBrandName] = useState("");
   const [status, setStatus] = useState<"draft" | "published">(product?.status === "published" ? "published" : "draft");
   const [isFeatured, setIsFeatured] = useState(product?.isFeatured ?? false);
   const [isTrending, setIsTrending] = useState(product?.isTrending ?? false);
@@ -121,15 +121,12 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
     if (imported.categoryId !== undefined) setCategoryId(imported.categoryId);
     if (imported.subcategory !== undefined) setImportedSubcategory(imported.subcategory);
     if (imported.brandId !== undefined) setBrandId(imported.brandId);
+    setImportedBrandName(imported.brandId ? "" : imported.brandName ?? "");
     setStatus(imported.status);
     if (imported.featuredProduct !== undefined) setIsFeatured(imported.featuredProduct);
     if (imported.trendingProduct !== undefined) setIsTrending(imported.trendingProduct);
     if (imported.offer) offersRef.current?.applyImport(imported.offer);
     requestAnimationFrame(() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
-
-  function addResolvedBrand(brand: AdminBrandOption) {
-    setAvailableBrands((current) => current.some((item) => item.id === brand.id) ? current : [...current, brand].sort((a, b) => a.name.localeCompare(b.name)));
   }
 
   return (
@@ -148,7 +145,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
       ) : null}
 
       {mode === "create" ? (
-        <ProductJsonImporter brands={availableBrands} categories={categories} merchants={merchants} onApply={applyImport} onBrandResolved={addResolvedBrand} resolveBrand={resolveOrCreateImportedBrand} />
+        <ProductJsonImporter brands={availableBrands} categories={categories} merchants={merchants} onApply={applyImport} />
       ) : null}
 
       <fieldset className="scroll-mt-24 rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)] sm:p-6" ref={detailsRef}>
@@ -241,11 +238,13 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
 
           <div>
             <label className="text-sm font-semibold text-[#111827]" htmlFor="product-brand">Brand</label>
-            <select aria-describedby={describedBy("brandId")} aria-invalid={Boolean(state.fieldErrors.brandId)} className={inputClass} disabled={isPending} id="product-brand" name="brandId" onChange={(event) => setBrandId(event.target.value)} value={brandId}>
+            <input name="importedBrandName" type="hidden" value={importedBrandName} />
+            <select aria-describedby={describedBy("brandId")} aria-invalid={Boolean(state.fieldErrors.brandId)} className={inputClass} disabled={isPending} id="product-brand" name="brandId" onChange={(event) => { setBrandId(event.target.value); setImportedBrandName(""); }} value={brandId}>
               <option value="">No brand</option>
               {availableBrands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}{brand.isActive ? "" : " (inactive)"}</option>)}
             </select>
             <FieldError error={state.fieldErrors.brandId} field="brandId" />
+            {importedBrandName ? <p className="mt-2 text-xs font-semibold text-[#92400E]">{importedBrandName} will be created when this product is saved.</p> : null}
           </div>
 
         </div>

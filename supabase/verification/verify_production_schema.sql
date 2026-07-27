@@ -265,3 +265,38 @@ where table_schema='public' and table_name in (
   'blog_categories','blog_posts','blog_tags','blog_post_tags','knowledge_hub_items','product_images'
 )
 order by table_name, ordinal_position;
+-- Complete live catalog audit. Run as a database owner in the production SQL editor.
+select c.table_name, c.ordinal_position, c.column_name, c.data_type, c.udt_name,
+  c.is_nullable, c.column_default
+from information_schema.columns c
+where c.table_schema = 'public' and c.table_name in
+  ('admin_users','categories','brands','merchants','products','product_offers')
+order by c.table_name, c.ordinal_position;
+
+select rel.relname as table_name, con.conname, con.contype,
+  pg_get_constraintdef(con.oid) as definition
+from pg_constraint con join pg_class rel on rel.oid = con.conrelid
+join pg_namespace ns on ns.oid = rel.relnamespace
+where ns.nspname = 'public' and rel.relname in
+  ('admin_users','categories','brands','merchants','products','product_offers')
+order by rel.relname, con.contype, con.conname;
+
+select table_name, grantee, privilege_type from information_schema.role_table_grants
+where table_schema = 'public' and table_name in
+  ('admin_users','categories','brands','merchants','products','product_offers')
+order by table_name, grantee, privilege_type;
+
+select rel.relname as table_name, rel.relrowsecurity as rls_enabled,
+  rel.relforcerowsecurity as rls_forced
+from pg_class rel join pg_namespace ns on ns.oid = rel.relnamespace
+where ns.nspname = 'public' and rel.relname in
+  ('admin_users','categories','brands','merchants','products','product_offers')
+order by rel.relname;
+
+select tablename, policyname, roles, cmd, qual, with_check from pg_policies
+where schemaname = 'public' and tablename in
+  ('admin_users','categories','brands','merchants','products','product_offers')
+order by tablename, policyname;
+
+select auth.uid() as authenticated_user_id, au.user_id, au.role, au.is_active
+from public.admin_users au where au.user_id = (select auth.uid());

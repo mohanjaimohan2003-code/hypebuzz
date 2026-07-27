@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getAdminAccess } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, ProductImage } from "@/lib/types/database";
 import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/offers/publication-contract";
@@ -23,6 +22,78 @@ function authorizationError(): ProductActionState {
     status: "error",
     message: "Your admin session is not authorized for this action.",
     fieldErrors: {},
+  };
+}
+
+function expiredSessionError(): ProductActionState {
+  return {
+    status: "error",
+    message: "Your admin session has expired. Please sign in again.",
+    fieldErrors: {},
+  };
+}
+
+type ProductSupabaseClient = Awaited<ReturnType<typeof createClient>>;
+type ProductAuthContext = {
+  supabase: ProductSupabaseClient;
+  authenticated: boolean;
+  userId: string | null;
+  requestRole: string | null;
+  activeAdmin: boolean;
+};
+
+async function inspectProductAuthContext(): Promise<ProductAuthContext> {
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  let activeAdmin = false;
+  let adminRole: string | null = null;
+
+  if (authError) logSupabaseError("authenticate product save request", authError);
+
+  if (user && !authError) {
+    const { data: admin, error: adminError } = await supabase
+      .from("admin_users")
+      .select("user_id, role, is_active")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .eq("is_active", true)
+      .maybeSingle<{ user_id: string; role: string; is_active: boolean }>();
+    activeAdmin = !adminError && Boolean(admin);
+    adminRole = admin?.role ?? null;
+    if (adminError) logSupabaseError("verify product save active admin", adminError);
+  }
+
+  if (process.env.NODE_ENV === "development") {
+    console.info("Product save authentication", {
+      authenticatedUserFound: Boolean(user) && !authError,
+      authenticatedUserId: user?.id ?? null,
+      requestRole: user?.role ?? null,
+      adminRole,
+      activeAdmin,
+      authErrorCode: authError?.code ?? null,
+      authErrorMessage: authError?.message ?? null,
+    });
+  }
+
+  return {
+    supabase,
+    authenticated: Boolean(user) && !authError,
+    userId: user?.id ?? null,
+    requestRole: user?.role ?? null,
+    activeAdmin,
+  };
+}
+
+export async function diagnoseProductSaveAuthentication(): Promise<{
+  authenticated: boolean;
+  userIdPresent: boolean;
+  activeAdmin: boolean;
+}> {
+  const auth = await inspectProductAuthContext();
+  return {
+    authenticated: auth.authenticated,
+    userIdPresent: Boolean(auth.userId),
+    activeAdmin: auth.activeAdmin,
   };
 }
 
@@ -134,6 +205,14 @@ function databaseError(
     };
   }
 
+  if (error?.code === "42703") {
+    return {
+      status: "error",
+      message: `The production catalog schema is missing an expected column${diagnostic.column === "not reported" ? "." : `: ${diagnostic.column}.`} Apply the reviewed catalog migration before retrying.`,
+      fieldErrors: {},
+    };
+  }
+
   return {
     status: "error",
     message: "The product could not be saved. Please try again or contact an administrator.",
@@ -150,11 +229,6 @@ function revalidateProductRoutes() {
   revalidatePath("/products/[slug]", "page");
 }
 
-async function isAuthorizedAdmin() {
-  const access = await getAdminAccess();
-  return access.status === "authenticated";
-}
-
 type ImportedBrandReference = { id: string; name: string; slug: string; isActive: boolean };
 export type ImportedBrandResolution =
   | { status: "selected" | "created"; brand: ImportedBrandReference; message: string }
@@ -163,6 +237,24 @@ export type ImportedBrandResolution =
 
 function cleanImportedBrandName(value: string) {
   return cleanImportedReferenceDisplayName(value).slice(0, 120);
+}
+
+async function resolveImportedBrandAtSave(supabase: ProductSupabaseClient, rawName: string) {
+  const name = cleanImportedBrandName(rawName);
+  const slug = createBrandSlug(name);
+  if (name.length < 2 || !slug) return { id: null, error: { code: "23502", message: "Imported brand name is invalid." } };
+  const existing = await supabase.from("brands").select("id, name, slug").returns<Array<{ id: string; name: string; slug: string }>>();
+  if (existing.error) return { id: null, error: existing.error };
+  const normalized = normalizeReferenceName(name);
+  const match = (existing.data ?? []).find((brand) => brand.slug === slug || normalizeReferenceName(brand.name) === normalized);
+  if (match) return { id: match.id, error: null };
+  const inserted = await supabase.from("brands").insert({ name, slug }).select("id").single<{ id: string }>();
+  if (!inserted.error) return { id: inserted.data.id, error: null };
+  if (inserted.error.code === "23505") {
+    const concurrent = await supabase.from("brands").select("id").eq("slug", slug).maybeSingle<{ id: string }>();
+    if (!concurrent.error && concurrent.data) return { id: concurrent.data.id, error: null };
+  }
+  return { id: null, error: inserted.error };
 }
 
 export async function resolveOrCreateImportedBrand(rawName: string): Promise<ImportedBrandResolution> {
@@ -250,12 +342,11 @@ export async function resolveOrCreateImportedBrand(rawName: string): Promise<Imp
   return { status: "error", message: importedBrandProductionError(inserted.error, name) };
 }
 
-async function categoryExists(categoryId: string): Promise<{
+async function categoryExists(supabase: ProductSupabaseClient, categoryId: string): Promise<{
   exists: boolean;
   active: boolean;
   error?: SupabaseDatabaseError;
 }> {
-  const supabase = await createClient();
   const { data, error } = await supabase
     .from("categories")
     .select("id, is_active")
@@ -266,7 +357,7 @@ async function categoryExists(categoryId: string): Promise<{
   return { exists: Boolean(data), active: data?.is_active === true };
 }
 
-async function saveProductWithOffer(productId: string | null, values: ProductFormValues, formData: FormData, primaryImageUrl: string | null = null) {
+async function saveProductWithOffer(supabase: ProductSupabaseClient, productId: string | null, values: ProductFormValues, formData: FormData, primaryImageUrl: string | null = null) {
   const offerIdValue = String(formData.get("offerId") ?? "").trim();
   const primaryOffer = values.offers.find((offer) => isOfferEligibleForPublication({
     affiliateUrl: offer.affiliateUrl,
@@ -280,7 +371,6 @@ async function saveProductWithOffer(productId: string | null, values: ProductFor
   })) ?? values.offers[0];
   const offerId = primaryOffer?.persisted === true && isUuid(primaryOffer.id) ? primaryOffer.id : (isUuid(offerIdValue) ? offerIdValue : null);
   const hasOffer = Boolean(primaryOffer);
-  const supabase = await createClient();
   const result = await supabase.rpc("save_product_with_offer", {
     p_product_id: productId,
     p_name: values.name,
@@ -304,19 +394,17 @@ async function saveProductWithOffer(productId: string | null, values: ProductFor
   return result;
 }
 
-async function validateBrandReference(brandId: string) {
+async function validateBrandReference(supabase: ProductSupabaseClient, brandId: string) {
   if (!brandId) return { exists: true, error: null };
-  const supabase = await createClient();
   const { data, error } = await supabase.from("brands").select("id").eq("id", brandId).maybeSingle();
   return { exists: Boolean(data), error };
 }
 
-async function validateProductOfferMerchants(values: ProductFormValues) {
+async function validateProductOfferMerchants(supabase: ProductSupabaseClient, values: ProductFormValues) {
   const activeMerchantIds = [...new Set(
     values.offers.filter((offer) => offer.isActive).map((offer) => offer.merchantId),
   )];
   if (!activeMerchantIds.length) return { valid: true, error: null };
-  const supabase = await createClient();
   const result = await supabase.from("merchants").select("id").in("id", activeMerchantIds)
     .eq("is_active", true).returns<Array<{ id: string }>>();
   return {
@@ -325,8 +413,7 @@ async function validateProductOfferMerchants(values: ProductFormValues) {
   };
 }
 
-async function saveProductDetails(productId: string, values: ProductFormValues) {
-  const supabase = await createClient();
+async function saveProductDetails(supabase: ProductSupabaseClient, productId: string, values: ProductFormValues) {
   const result = await supabase.from("products").update({
     brand_id: values.brandId || null,
     ...richFieldsDatabasePayload(values),
@@ -339,15 +426,14 @@ const IMAGE_BUCKET = "product-images";
 async function imageExtension(file: File) { const b = new Uint8Array(await file.slice(0,12).arrayBuffer()); if (b[0]===0xff&&b[1]===0xd8&&b[2]===0xff) return "jpg"; if (b[0]===0x89&&b[1]===0x50&&b[2]===0x4e&&b[3]===0x47) return "png"; if (String.fromCharCode(...b.slice(0,4))==="RIFF"&&String.fromCharCode(...b.slice(8,12))==="WEBP") return "webp"; return null; }
 function safeFileName(name: string) { return name.replace(/\.[^.]+$/,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"product"; }
 type SavedImage = { id:string; image_url:string; storage_path:string|null; source_type:"upload"|"external"; alt_text:string; sort_order:number; is_primary:boolean };
-async function syncProductImages(productId:string, productName:string, values:ProductFormValues, formData:FormData) {
-  const supabase=await createClient(); const files=formData.getAll("uploadedImages").filter((x):x is File=>x instanceof File&&x.size>0); const existingResult=await supabase.from("product_images").select("*").eq("product_id",productId).returns<ProductImage[]>();
+async function syncProductImages(supabase:ProductSupabaseClient, productId:string, productName:string, values:ProductFormValues, formData:FormData) {
+  const files=formData.getAll("uploadedImages").filter((x):x is File=>x instanceof File&&x.size>0); const existingResult=await supabase.from("product_images").select("*").eq("product_id",productId).returns<ProductImage[]>();
   if(existingResult.error) return operationErrorMessage("select product_images before replacement", existingResult.error, "Product images could not be loaded."); const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
   for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after validation failure",cleanup.error);}return "An existing image is no longer available. Refresh and try again.";}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];const ext=await imageExtension(file);if(!ext){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after invalid file",cleanup.error);}return "Only genuine JPG, PNG, or WebP images are allowed.";}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after upload failure",cleanup.error);}return operationErrorMessage("upload image to product-images storage",result.error,"This image could not be uploaded. Please try again.");}uploaded.push(path);rows.push({id,image_url:`/product-images/${id}`,storage_path:path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
   if(rows.length&&!rows.some(x=>x.is_primary))rows[0].is_primary=true;const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after product_images failure",cleanup.error);}return operationErrorMessage("insert product_images via replace_product_images",replaced.error,"Product images could not be saved. Please try again.");}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(removed);if(cleanup.error)logSupabaseError("remove replaced product images from storage",cleanup.error);}return null;
 }
 
-async function syncProductOffers(productId: string, values: ProductFormValues) {
-  const supabase = await createClient();
+async function syncProductOffers(supabase: ProductSupabaseClient, productId: string, values: ProductFormValues) {
   const activeMerchantIds = [...new Set(values.offers.filter((offer) => offer.isActive).map((offer) => offer.merchantId))];
   if (activeMerchantIds.length) {
     const result = await supabase.from("merchants").select("id").in("id", activeMerchantIds).eq("is_active", true).returns<Array<{ id: string }>>();
@@ -387,12 +473,22 @@ export async function createProduct(
   _previousState: ProductActionState,
   formData: FormData,
 ): Promise<ProductActionState> {
-  if (!(await isAuthorizedAdmin())) return authorizationError();
+  const auth = await inspectProductAuthContext();
+  if (!auth.authenticated) return expiredSessionError();
+  if (!auth.activeAdmin) return authorizationError();
+  const { supabase } = auth;
 
   const validation = validateProductForm(formData);
   if (!validation.success) return validation.state;
 
-  const category = await categoryExists(validation.data.categoryId);
+  const importedBrandName = String(formData.get("importedBrandName") ?? "").trim();
+  if (!validation.data.brandId && importedBrandName) {
+    const resolvedBrand = await resolveImportedBrandAtSave(supabase, importedBrandName);
+    if (resolvedBrand.error || !resolvedBrand.id) return databaseError(resolvedBrand.error, "resolve or create brand during product save");
+    validation.data.brandId = resolvedBrand.id;
+  }
+
+  const category = await categoryExists(supabase, validation.data.categoryId);
   if (category.error) return databaseError(category.error, "insert");
   if (!category.exists) {
     return {
@@ -404,24 +500,24 @@ export async function createProduct(
   if (validation.data.status === "published" && !category.active) {
     return inactivePublishedCategoryError();
   }
-  const merchants = await validateProductOfferMerchants(validation.data);
+  const merchants = await validateProductOfferMerchants(supabase, validation.data);
   if (merchants.error) return databaseError(merchants.error, "insert");
   if (!merchants.valid) return { status: "error", message: publicationErrorMessages.OFFER_MERCHANT_INACTIVE, fieldErrors: { offerList: publicationErrorMessages.OFFER_MERCHANT_INACTIVE } };
-  const brand = await validateBrandReference(validation.data.brandId);
+  const brand = await validateBrandReference(supabase, validation.data.brandId);
   if (brand.error) return databaseError(brand.error, "insert");
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
   const initialPrimary = validation.data.imageManifest.find(x=>x.isPrimary&&x.kind==="external")?.url ?? validation.data.imageManifest.find(x=>x.kind==="external")?.url ?? null;
-  const { data, error } = await saveProductWithOffer(null, validation.data, formData, initialPrimary);
+  const { data, error } = await saveProductWithOffer(supabase, null, validation.data, formData, initialPrimary);
 
   if (error) return databaseError(error, "insert products via save_product_with_offer");
   if (!data) return { status:"error",message:"The product could not be created.",fieldErrors:{} };
-  const brandResult = await saveProductDetails(data, validation.data);
-  if (brandResult.error || !brandResult.data) { const supabase = await createClient(); const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after rich-field update",cleanup.error); return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)"); }
-  const imageError=await syncProductImages(data,validation.data.name,validation.data,formData);
-  if(imageError){const supabase=await createClient();const cleanup=await supabase.rpc("delete_failed_product",{p_product_id:data});if(cleanup.error)logSupabaseError("delete failed product after image failure",cleanup.error);return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
-  const offerError = await syncProductOffers(data, validation.data);
-  if (offerError) { const supabase = await createClient(); const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after product_offers failure",cleanup.error); return { status: "error", message: offerError, fieldErrors: { offerList: offerError } }; }
+  const brandResult = await saveProductDetails(supabase, data, validation.data);
+  if (brandResult.error || !brandResult.data) { const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after rich-field update",cleanup.error); return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)"); }
+  const imageError=await syncProductImages(supabase,data,validation.data.name,validation.data,formData);
+  if(imageError){const cleanup=await supabase.rpc("delete_failed_product",{p_product_id:data});if(cleanup.error)logSupabaseError("delete failed product after image failure",cleanup.error);return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
+  const offerError = await syncProductOffers(supabase, data, validation.data);
+  if (offerError) { const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after product_offers failure",cleanup.error); return { status: "error", message: offerError, fieldErrors: { offerList: offerError } }; }
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=created");
@@ -432,7 +528,10 @@ export async function updateProduct(
   _previousState: ProductActionState,
   formData: FormData,
 ): Promise<ProductActionState> {
-  if (!(await isAuthorizedAdmin())) return authorizationError();
+  const auth = await inspectProductAuthContext();
+  if (!auth.authenticated) return expiredSessionError();
+  if (!auth.activeAdmin) return authorizationError();
+  const { supabase } = auth;
 
   if (!isUuid(productId)) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
@@ -441,7 +540,7 @@ export async function updateProduct(
   const validation = validateProductForm(formData);
   if (!validation.success) return validation.state;
 
-  const category = await categoryExists(validation.data.categoryId);
+  const category = await categoryExists(supabase, validation.data.categoryId);
   if (category.error) return databaseError(category.error, "update");
   if (!category.exists) {
     return {
@@ -453,25 +552,25 @@ export async function updateProduct(
   if (validation.data.status === "published" && !category.active) {
     return inactivePublishedCategoryError();
   }
-  const merchants = await validateProductOfferMerchants(validation.data);
+  const merchants = await validateProductOfferMerchants(supabase, validation.data);
   if (merchants.error) return databaseError(merchants.error, "update");
   if (!merchants.valid) return { status: "error", message: publicationErrorMessages.OFFER_MERCHANT_INACTIVE, fieldErrors: { offerList: publicationErrorMessages.OFFER_MERCHANT_INACTIVE } };
-  const brand = await validateBrandReference(validation.data.brandId);
+  const brand = await validateBrandReference(supabase, validation.data.brandId);
   if (brand.error) return databaseError(brand.error, "update");
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
-  const supabase=await createClient(); const current=await supabase.from("products").select("primary_image_url").eq("id",productId).maybeSingle<{primary_image_url:string|null}>();
-  const { data, error } = await saveProductWithOffer(productId, validation.data, formData, current.data?.primary_image_url??null);
+  const current=await supabase.from("products").select("primary_image_url").eq("id",productId).maybeSingle<{primary_image_url:string|null}>();
+  const { data, error } = await saveProductWithOffer(supabase, productId, validation.data, formData, current.data?.primary_image_url??null);
 
   if (error) return databaseError(error, "update products via save_product_with_offer");
   if (!data) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
-  const brandResult = await saveProductDetails(productId, validation.data);
+  const brandResult = await saveProductDetails(supabase, productId, validation.data);
   if (brandResult.error || !brandResult.data) return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)");
-  const imageError=await syncProductImages(productId,validation.data.name,validation.data,formData);
+  const imageError=await syncProductImages(supabase,productId,validation.data.name,validation.data,formData);
   if(imageError)return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};
-  const offerError = await syncProductOffers(productId, validation.data);
+  const offerError = await syncProductOffers(supabase, productId, validation.data);
   if (offerError) return { status: "error", message: offerError, fieldErrors: { offerList: offerError } };
 
   revalidateProductRoutes();
@@ -483,13 +582,15 @@ export async function archiveProduct(
   _previousState: ProductActionState,
 ): Promise<ProductActionState> {
   void _previousState;
-  if (!(await isAuthorizedAdmin())) return authorizationError();
+  const auth = await inspectProductAuthContext();
+  if (!auth.authenticated) return expiredSessionError();
+  if (!auth.activeAdmin) return authorizationError();
 
   if (!isUuid(productId)) {
     return { status: "error", message: "The product could not be found.", fieldErrors: {} };
   }
 
-  const supabase = await createClient();
+  const { supabase } = auth;
   const { data, error } = await supabase
     .from("products")
     .update({ status: "archived" })
