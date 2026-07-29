@@ -17,7 +17,7 @@ const categoryId = "33333333-3333-4333-8333-333333333333";
 function productForm(rich: Partial<{ longDescription: string; highlights: unknown; specifications: unknown; seoTitle: string; seoDescription: string }> = {}) {
   const form = new FormData();
   form.set("name", "Rich product"); form.set("slug", "rich-product"); form.set("categoryId", categoryId);
-  form.set("status", "draft"); form.set("imageManifest", "[]"); form.set("offerManifest", "[]");
+  form.set("status", "draft"); form.set("imageManifest", JSON.stringify([{kind:"external",url:"https://example.com/product.webp",isPrimary:true}])); form.set("offerManifest", "[]");
   form.set("longDescription", rich.longDescription ?? "");
   form.set("highlightsManifest", JSON.stringify(rich.highlights ?? []));
   form.set("specificationsManifest", JSON.stringify(rich.specifications ?? {}));
@@ -42,7 +42,7 @@ test("creating without optional rich fields remains valid", () => {
 test("draft and publish validation return exact field reasons", () => {
   const draft = new FormData(); draft.set("status", "draft"); draft.set("imageManifest", "[]"); draft.set("offerManifest", "[]");
   const draftResult = validateProductForm(draft); assert.equal(draftResult.success, false);
-  if (!draftResult.success) { assert.equal(draftResult.state.message, "Draft cannot be saved:"); assert.ok(draftResult.state.fieldErrors.name); assert.ok(draftResult.state.fieldErrors.slug); assert.ok(draftResult.state.fieldErrors.categoryId); assert.deepEqual(draftResult.state.validationErrors?.map((error) => error.field), ["name", "slug", "categoryId"]); }
+  if (!draftResult.success) { assert.equal(draftResult.state.message, "Draft cannot be saved:"); assert.ok(draftResult.state.fieldErrors.name); assert.ok(draftResult.state.fieldErrors.slug); assert.ok(draftResult.state.fieldErrors.categoryId); assert.ok(draftResult.state.fieldErrors.imageUrl); assert.deepEqual(draftResult.state.validationErrors?.map((error) => error.field), ["name", "slug", "categoryId", "imageUrl"]); }
   const publish = productForm(); publish.set("status", "published");
   const publishResult = validateProductForm(publish); assert.equal(publishResult.success, false);
   if (!publishResult.success) { assert.equal(publishResult.state.message, "Product cannot be published:"); assert.ok(publishResult.state.fieldErrors.offerList); assert.ok((publishResult.state.validationErrors?.length ?? 0) > 0); }

@@ -113,6 +113,10 @@ function logSupabaseError(step: string, error: SupabaseDatabaseError | null) {
   });
 }
 
+function exactDatabaseException(prefix: string, error: SupabaseDatabaseError | null) {
+  return `${prefix}\nCode: ${error?.code ?? "unknown"}\nMessage: ${error?.message ?? "Unknown database error."}\nDetails: ${error?.details ?? "None"}\nHint: ${error?.hint ?? "None"}`;
+}
+
 function operationErrorMessage(step: string, error: SupabaseDatabaseError, productionMessage: string) {
   logSupabaseError(step, error);
   if (process.env.NODE_ENV !== "development") return productionMessage;
@@ -436,6 +440,40 @@ async function validateBrandReference(supabase: ProductSupabaseClient, brandId: 
   return { exists: Boolean(data), error };
 }
 
+type ExistingProductSlug = { id: string; name: string; slug: string; status: ProductStatus };
+
+async function findProductBySlug(supabase: ProductSupabaseClient, slug: string) {
+  return supabase.from("products").select("id, name, slug, status").eq("slug", slug)
+    .maybeSingle<ExistingProductSlug>();
+}
+
+function duplicateProductState(product: ExistingProductSlug): ProductActionState {
+  return {
+    status: "error",
+    message: "A product with this slug already exists.",
+    fieldErrors: { slug: "This slug belongs to an existing product." },
+    existingProductId: product.id,
+  };
+}
+
+async function resolveCreateSlug(supabase: ProductSupabaseClient, requestedSlug: string, productName: string) {
+  const exact = await findProductBySlug(supabase, requestedSlug);
+  if (exact.error) return { slug: null, duplicate: null, error: exact.error };
+  if (exact.data && normalizeReferenceName(exact.data.name) === normalizeReferenceName(productName)) {
+    return { slug: null, duplicate: exact.data, error: null };
+  }
+  const candidates = await supabase.from("products").select("id, name, slug, status").like("slug", `${requestedSlug}-%`)
+    .returns<ExistingProductSlug[]>();
+  if (candidates.error) return { slug: null, duplicate: null, error: candidates.error };
+  const matchingProduct = (candidates.data ?? []).find((product) => normalizeReferenceName(product.name) === normalizeReferenceName(productName));
+  if (matchingProduct) return { slug: null, duplicate: matchingProduct, error: null };
+  if (!exact.data) return { slug: requestedSlug, duplicate: null, error: null };
+  const occupied = new Set((candidates.data ?? []).map((product) => product.slug));
+  let suffix = 2;
+  while (occupied.has(`${requestedSlug}-${suffix}`)) suffix += 1;
+  return { slug: `${requestedSlug}-${suffix}`, duplicate: null, error: null };
+}
+
 async function validateProductOfferMerchants(supabase: ProductSupabaseClient, values: ProductFormValues) {
   const activeMerchantIds = [...new Set(
     values.offers.filter((offer) => offer.isActive).map((offer) => offer.merchantId),
@@ -464,11 +502,72 @@ const IMAGE_BUCKET = "product-images";
 async function imageExtension(file: File) { const b = new Uint8Array(await file.slice(0,12).arrayBuffer()); if (b[0]===0xff&&b[1]===0xd8&&b[2]===0xff) return "jpg"; if (b[0]===0x89&&b[1]===0x50&&b[2]===0x4e&&b[3]===0x47) return "png"; if (String.fromCharCode(...b.slice(0,4))==="RIFF"&&String.fromCharCode(...b.slice(8,12))==="WEBP") return "webp"; return null; }
 function safeFileName(name: string) { return name.replace(/\.[^.]+$/,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,60)||"product"; }
 type SavedImage = { id:string; image_url:string; storage_path:string|null; source_type:"upload"|"external"; alt_text:string; sort_order:number; is_primary:boolean };
+type ImageStage = { rows: SavedImage[]; uploadedPaths: string[]; submissionId: string };
+
+function imageFailure(step:string,error:SupabaseDatabaseError|null,context:{submissionId:string;bucket?:string;objectPath?:string;productId?:string|null}) {
+  const message = [
+    `Image save failed at step: ${step}`,
+    `Code: ${error?.code ?? "unknown"}`,
+    `Message: ${error?.message ?? "Unknown Supabase error."}`,
+    `Details: ${error?.details ?? "None"}`,
+    `Hint: ${error?.hint ?? "None"}`,
+    `Bucket: ${context.bucket ?? IMAGE_BUCKET}`,
+    `Object path: ${context.objectPath ?? "None"}`,
+    `Product ID: ${context.productId ?? "Not created"}`,
+    `Submission ID: ${context.submissionId}`,
+  ].join("\n");
+  console.error(message);
+  return message;
+}
+
+async function cleanupUploadedImages(supabase:ProductSupabaseClient, paths:string[], submissionId:string, productId:string|null) {
+  if (!paths.length) return null;
+  const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(paths);
+  if (cleanup.error) return imageFailure("remove uploaded images during rollback",cleanup.error,{submissionId,bucket:IMAGE_BUCKET,objectPath:paths.join(", "),productId});
+  return null;
+}
+
+async function stageNewProductImages(supabase:ProductSupabaseClient, productName:string, values:ProductFormValues, formData:FormData):Promise<{stage:ImageStage|null;error:string|null}> {
+  const submissionId=crypto.randomUUID();
+  const files=formData.getAll("uploadedImages").filter((x):x is File=>x instanceof File&&x.size>0);
+  const rows:SavedImage[]=[];
+  const uploadedPaths:string[]=[];
+  for(let index=0;index<values.imageManifest.length;index++) {
+    const item=values.imageManifest[index];
+    const id=crypto.randomUUID();
+    if(item.kind==="existing") return {stage:null,error:imageFailure("validate uploaded image state",{code:"IMAGE_STATE_LOST",message:"A new product cannot reference an existing image row."},{submissionId})};
+    if(item.kind==="external") {
+      rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});
+      continue;
+    }
+    const file=files[item.fileIndex!];
+    if(!(file instanceof File)||file.size<=0) return {stage:null,error:imageFailure("validate uploaded image state",{code:"IMAGE_STATE_LOST",message:"Uploaded image state was lost. Select the file again."},{submissionId})};
+    const ext=await imageExtension(file);
+    if(!ext) return {stage:null,error:imageFailure("validate uploaded image bytes",{code:"IMAGE_TYPE_INVALID",message:"Only genuine JPG, PNG, or WebP images are allowed."},{submissionId})};
+    const path=`submissions/${submissionId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;
+    const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});
+    if(result.error) {
+      await cleanupUploadedImages(supabase,uploadedPaths,submissionId,null);
+      return {stage:null,error:imageFailure("upload image to product-images storage",result.error,{submissionId,bucket:IMAGE_BUCKET,objectPath:path})};
+    }
+    if(!result.data?.path) {
+      await cleanupUploadedImages(supabase,[...uploadedPaths,path],submissionId,null);
+      return {stage:null,error:imageFailure("generate image object path",{code:"IMAGE_URL_MISSING",message:"Image URL could not be generated because storage returned no object path."},{submissionId,bucket:IMAGE_BUCKET,objectPath:path})};
+    }
+    uploadedPaths.push(result.data.path);
+    rows.push({id,image_url:`/product-images/${id}`,storage_path:result.data.path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});
+  }
+  if(!rows.length) return {stage:null,error:"Upload at least one product image before saving."};
+  if(rows.filter(row=>row.is_primary).length!==1) return {stage:null,error:"Choose exactly one primary image."};
+  return {stage:{rows,uploadedPaths,submissionId},error:null};
+}
+
 async function syncProductImages(supabase:ProductSupabaseClient, productId:string, productName:string, values:ProductFormValues, formData:FormData) {
+  const submissionId=crypto.randomUUID();
   const files=formData.getAll("uploadedImages").filter((x):x is File=>x instanceof File&&x.size>0); const existingResult=await supabase.from("product_images").select("*").eq("product_id",productId).returns<ProductImage[]>();
-  if(existingResult.error) return operationErrorMessage("select product_images before replacement", existingResult.error, "Product images could not be loaded."); const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
-  for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after validation failure",cleanup.error);}return "An existing image is no longer available. Refresh and try again.";}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];const ext=await imageExtension(file);if(!ext){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after invalid file",cleanup.error);}return "Only genuine JPG, PNG, or WebP images are allowed.";}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after upload failure",cleanup.error);}return operationErrorMessage("upload image to product-images storage",result.error,"This image could not be uploaded. Please try again.");}uploaded.push(path);rows.push({id,image_url:`/product-images/${id}`,storage_path:path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
-  if(rows.length&&!rows.some(x=>x.is_primary))rows[0].is_primary=true;const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){if(uploaded.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(uploaded);if(cleanup.error)logSupabaseError("remove uploaded images after product_images failure",cleanup.error);}return operationErrorMessage("insert product_images via replace_product_images",replaced.error,"Product images could not be saved. Please try again.");}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length){const cleanup=await supabase.storage.from(IMAGE_BUCKET).remove(removed);if(cleanup.error)logSupabaseError("remove replaced product images from storage",cleanup.error);}return null;
+  if(existingResult.error) return imageFailure("select product_images before replacement",existingResult.error,{submissionId,productId}); const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
+  for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("validate existing product image",{code:"IMAGE_ROW_MISSING",message:"An existing image is no longer available. Refresh and try again."},{submissionId,productId});}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];if(!(file instanceof File)||file.size<=0)return imageFailure("validate uploaded image state",{code:"IMAGE_STATE_LOST",message:"Uploaded image state was lost. Select the file again."},{submissionId,productId});const ext=await imageExtension(file);if(!ext){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("validate uploaded image bytes",{code:"IMAGE_TYPE_INVALID",message:"Only genuine JPG, PNG, or WebP images are allowed."},{submissionId,productId});}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("upload image to product-images storage",result.error,{submissionId,bucket:IMAGE_BUCKET,objectPath:path,productId});}uploaded.push(result.data.path);rows.push({id,image_url:`/product-images/${id}`,storage_path:result.data.path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
+  const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("insert product_images via replace_product_images",replaced.error,{submissionId,productId});}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length)await cleanupUploadedImages(supabase,removed,submissionId,productId);return null;
 }
 
 async function syncProductOffers(supabase: ProductSupabaseClient, productId: string, values: ProductFormValues) {
@@ -477,7 +576,17 @@ async function syncProductOffers(supabase: ProductSupabaseClient, productId: str
     const result = await supabase.from("merchants").select("id").in("id", activeMerchantIds).eq("is_active", true).returns<Array<{ id: string }>>();
     if (result.error || (result.data ?? []).length !== activeMerchantIds.length) return "Active offers must use active merchants.";
   }
-  const rows = values.offers.map((offer) => ({
+  const rows = productOfferRows(values);
+  const result = await supabase.rpc("replace_product_offers", { p_product_id: productId, p_offers: rows as unknown as Json });
+  if (result.error) {
+    return operationErrorMessage("insert product_offers via replace_product_offers", result.error,
+      result.error.code === "23505" ? "Only one active offer per merchant is allowed." : "Product offers could not be saved. Please try again.");
+  }
+  return null;
+}
+
+function productOfferRows(values:ProductFormValues) {
+  return values.offers.map((offer) => ({
     id: offer.id,
     merchant_id: offer.merchantId,
     affiliate_url: offer.affiliateUrl,
@@ -491,12 +600,6 @@ async function syncProductOffers(supabase: ProductSupabaseClient, productId: str
     offer_title: offer.offerTitle,
     last_checked_at: offer.lastCheckedAt ? new Date(offer.lastCheckedAt).toISOString() : null,
   }));
-  const result = await supabase.rpc("replace_product_offers", { p_product_id: productId, p_offers: rows as unknown as Json });
-  if (result.error) {
-    return operationErrorMessage("insert product_offers via replace_product_offers", result.error,
-      result.error.code === "23505" ? "Only one active offer per merchant is allowed." : "Product offers could not be saved. Please try again.");
-  }
-  return null;
 }
 
 function inactivePublishedCategoryError(): ProductActionState {
@@ -545,17 +648,39 @@ export async function createProduct(
   if (brand.error) return databaseError(brand.error, "insert");
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
-  const initialPrimary = validation.data.imageManifest.find(x=>x.isPrimary&&x.kind==="external")?.url ?? validation.data.imageManifest.find(x=>x.kind==="external")?.url ?? null;
+  const slugResolution = await resolveCreateSlug(supabase, validation.data.slug, validation.data.name);
+  if (slugResolution.error) return databaseError(slugResolution.error, "check product slug availability");
+  if (slugResolution.duplicate) return duplicateProductState(slugResolution.duplicate);
+  validation.data.slug = slugResolution.slug!;
+
+  const stagedImages=await stageNewProductImages(supabase,validation.data.name,validation.data,formData);
+  if(stagedImages.error||!stagedImages.stage)return {status:"error",message:stagedImages.error??"Upload at least one product image before saving.",fieldErrors:{imageUrl:stagedImages.error??"Upload at least one product image before saving."}};
+  const imageStage=stagedImages.stage;
+  const primaryImage=imageStage.rows.find(image=>image.is_primary);
+  if(!primaryImage){await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);return {status:"error",message:"Choose exactly one primary image.",fieldErrors:{imageUrl:"Choose exactly one primary image."}};}
   const productPayloadKeys = ["name", "slug", "short_description", "category_id", "primary_image_url", "is_featured", "is_trending", "status"];
-  const { data, error } = await saveProductWithOffer(supabase, auth.userId!, null, validation.data, formData, initialPrimary);
-  if (error) return productInsertError(error, productPayloadKeys);
-  if (!data) return { status:"error",message:"Product insert failed\nPostgreSQL code: unknown\nMessage: Supabase returned no product ID.\nDetails: None\nHint: None\nPayload keys: " + productPayloadKeys.join(", "),fieldErrors:{} };
-  const brandResult = await saveProductDetails(supabase, data, validation.data);
-  if (brandResult.error || !brandResult.data) { const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after supported product detail update",cleanup.error); return databaseError(brandResult.error, "update supported product details"); }
-  const imageError=await syncProductImages(supabase,data,validation.data.name,validation.data,formData);
-  if(imageError){const cleanup=await supabase.rpc("delete_failed_product",{p_product_id:data});if(cleanup.error)logSupabaseError("delete failed product after image failure",cleanup.error);return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};}
-  const offerError = await syncProductOffers(supabase, data, validation.data);
-  if (offerError) { const cleanup=await supabase.rpc("delete_failed_product", { p_product_id: data }); if(cleanup.error)logSupabaseError("delete failed product after product_offers failure",cleanup.error); return { status: "error", message: offerError, fieldErrors: { offerList: offerError } }; }
+  const productResult=await supabase.rpc("create_product_with_images_and_offers",{
+    p_product:{
+      name:validation.data.name,slug:validation.data.slug,short_description:validation.data.shortDescription||null,
+      description:validation.data.longDescription||null,category_id:validation.data.categoryId,brand_id:validation.data.brandId||null,
+      primary_image_url:primaryImage.image_url,specifications:validation.data.specifications as Json,
+      highlights:validation.data.highlights as Json,seo_title:validation.data.seoTitle||null,seo_description:validation.data.seoDescription||null,
+      is_featured:validation.data.isFeatured,is_trending:validation.data.isTrending,status:validation.data.status,
+    } as Json,
+    p_images:imageStage.rows as unknown as Json,
+    p_offers:productOfferRows(validation.data) as unknown as Json,
+  });
+  const data=productResult.data??null;
+  const error=productResult.error;
+  if (error?.code === "23505") {
+    await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);
+    const concurrent = await findProductBySlug(supabase, validation.data.slug);
+    if (!concurrent.error && concurrent.data && normalizeReferenceName(concurrent.data.name) === normalizeReferenceName(validation.data.name)) {
+      return duplicateProductState(concurrent.data);
+    }
+  }
+  if (error) {await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);return productInsertError(error, productPayloadKeys);}
+  if (!data) {await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);return { status:"error",message:"Product insert failed\nPostgreSQL code: unknown\nMessage: Supabase returned no product ID.\nDetails: None\nHint: None\nPayload keys: " + productPayloadKeys.join(", "),fieldErrors:{} };}
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=created");
@@ -660,12 +785,11 @@ export async function permanentlyDeleteProduct(
 
   const { supabase } = auth;
   const productResult = await supabase.from("products")
-    .select("id, status")
+    .select("id, slug, status")
     .eq("id", productId)
-    .maybeSingle<{ id: string; status: ProductStatus }>();
+    .maybeSingle<{ id: string; slug: string; status: ProductStatus }>();
   if (productResult.error) {
-    if (productResult.error.code === "42501") return { status: "error", message: "Permission denied while checking this product.", fieldErrors: {} };
-    return { status: "error", message: "Database deletion failed while checking this product.", fieldErrors: {} };
+    return { status: "error", message: exactDatabaseException("Database deletion failed while checking this product.", productResult.error), fieldErrors: {} };
   }
   if (!productResult.data) return { status: "error", message: "Product not found.", fieldErrors: {} };
   if (productResult.data.status !== "archived") {
@@ -677,26 +801,45 @@ export async function permanentlyDeleteProduct(
     .eq("product_id", productId)
     .not("storage_path", "is", null)
     .returns<Array<{ storage_path: string | null }>>();
-  if (imagesResult.error) return { status: "error", message: "Database deletion failed while loading uploaded images.", fieldErrors: {} };
-  const storagePaths = [...new Set((imagesResult.data ?? []).flatMap((image) => image.storage_path ? [image.storage_path] : []))];
-  if (storagePaths.length) {
-    const storageResult = await supabase.storage.from(IMAGE_BUCKET).remove(storagePaths);
-    if (storageResult.error) {
-      logSupabaseError("delete archived product storage objects", storageResult.error);
-      return { status: "error", message: "Storage deletion failed. The product was not deleted.", fieldErrors: {} };
-    }
-  }
+  if (imagesResult.error) console.warn("Permanent delete continuing without image metadata", {
+    productId, code: imagesResult.error.code, message: imagesResult.error.message,
+    details: imagesResult.error.details, hint: imagesResult.error.hint,
+  });
+  const storagePaths = imagesResult.error ? [] : [...new Set((imagesResult.data ?? []).flatMap((image) => image.storage_path ? [image.storage_path] : []))];
 
   const deleted = await supabase.rpc("permanently_delete_archived_product", { p_product_id: productId });
   if (deleted.error) {
     logSupabaseError("permanently delete archived product", deleted.error);
-    if (deleted.error.code === "42501") return { status: "error", message: "Permission denied. Active admin access is required.", fieldErrors: {} };
-    if (deleted.error.code === "P0002") return { status: "error", message: "Product not found.", fieldErrors: {} };
-    if (deleted.error.code === "55000") return { status: "error", message: "Only archived products can be permanently deleted.", fieldErrors: {} };
-    if (deleted.error.code === "23503") return { status: "error", message: "A related record prevented deletion. No database rows were deleted.", fieldErrors: {} };
-    return { status: "error", message: `Database deletion failed (${deleted.error.code ?? "unknown"}: ${deleted.error.message}).`, fieldErrors: {} };
+    const prefix = deleted.error.code === "42501" ? "Permission denied. Active admin access is required."
+      : deleted.error.code === "P0002" ? "Product not found."
+      : deleted.error.code === "55000" ? "Only archived products can be permanently deleted."
+      : deleted.error.code === "23503" ? "A related record prevented deletion. No database rows were deleted."
+      : "Database deletion failed.";
+    return { status: "error", message: exactDatabaseException(prefix, deleted.error), fieldErrors: {} };
+  }
+
+  const deletedSlug = typeof deleted.data === "string" ? deleted.data : productResult.data.slug;
+  let cleanupWarning = Boolean(imagesResult.error);
+  if (storagePaths.length) {
+    const storageResult = await supabase.storage.from(IMAGE_BUCKET).remove(storagePaths);
+    if (storageResult.error) {
+      cleanupWarning = true;
+      console.warn("Permanent delete completed with storage cleanup warning", {
+        productId, storagePaths, storageError: storageResult.error,
+      });
+    }
+  }
+
+  const [idVerification, slugVerification] = await Promise.all([
+    supabase.from("products").select("id").eq("id", productId).maybeSingle(),
+    supabase.from("products").select("id").eq("slug", deletedSlug).maybeSingle(),
+  ]);
+  const verificationError = idVerification.error ?? slugVerification.error;
+  if (verificationError) return { status: "error", message: exactDatabaseException("Product was deleted, but deletion verification failed.", verificationError), fieldErrors: {} };
+  if (idVerification.data || slugVerification.data) {
+    return { status: "error", message: "Database deletion verification failed: the product row or slug still exists.", fieldErrors: {} };
   }
 
   revalidateProductRoutes();
-  redirect("/admin/products?notice=deleted");
+  redirect(`/admin/products?notice=${cleanupWarning ? "deleted_warning" : "deleted"}`);
 }

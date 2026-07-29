@@ -129,6 +129,8 @@ export async function getPublicCategoryProducts(
       .from("products")
       .select("id, name, slug, primary_image_url, created_at, is_featured, is_trending, brand:brands(name, slug), product_offers(current_price, original_price, currency, availability, affiliate_url, is_active, merchant_id, merchant:merchants(slug, is_active))")
       .eq("status", "published")
+      .not("primary_image_url", "is", null)
+      .neq("primary_image_url", "")
       .eq("category_id", category.id)
       .order("created_at", { ascending: false })
       .limit(100)),
@@ -139,6 +141,7 @@ export async function getPublicCategoryProducts(
   const normalizedAvailability = filters.availability?.toLowerCase().replaceAll(" ", "_") ?? null;
   const rows = ((productsResult.data ?? []) as unknown as ProductRow[])
     .flatMap((product) => {
+      if (!product.primary_image_url?.trim()) return [];
       const offers = product.product_offers.filter(isDatabaseOfferPubliclyVisible);
       const eligibleOffers = offers.filter(isDatabaseOfferEligibleForPublication);
       const cheapest = [...eligibleOffers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];

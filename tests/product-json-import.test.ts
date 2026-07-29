@@ -68,7 +68,9 @@ test("category aliases map only to active parent categories that actually exist"
     { id: "mobiles", name: "Mobiles", slug: "mobiles", isActive: true },
     { id: "audio", name: "Audio", slug: "audio", isActive: true },
   ];
-  assert.equal(matchImportedCategory("Sports Shoes", categories).id, "sports");
+  const sportsShoes = matchImportedCategory("Sports Shoes", categories);
+  assert.equal(sportsShoes.id, "sports");
+  assert.equal(sportsShoes.subcategory, "Sports Shoes");
   assert.equal(matchImportedCategory("Running Shoes", categories).id, "sports");
   assert.equal(matchImportedCategory("Smartphones", categories).id, "mobiles");
   assert.equal(matchImportedCategory("Earbuds", categories).id, "audio");

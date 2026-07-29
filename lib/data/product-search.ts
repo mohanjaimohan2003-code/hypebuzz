@@ -56,6 +56,8 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
       .from("products")
       .select("id, name, slug, primary_image_url, created_at, category:categories!inner(slug), brand:brands(name, slug), product_offers(current_price, original_price, currency, availability, affiliate_url, is_active, merchant_id, merchant:merchants(name, slug, is_active))")
       .eq("status", "published")
+      .not("primary_image_url", "is", null)
+      .neq("primary_image_url", "")
       .order("created_at", { ascending: false })
       .limit(100),
     supabase.from("categories").select("name, slug").order("name").returns<OptionRow[]>(),
@@ -71,6 +73,7 @@ export async function searchProducts(filters: ProductSearchParams): Promise<Prod
   const query = filters.q.toLowerCase();
   const availability = filters.availability?.toLowerCase().replaceAll(" ", "_") ?? null;
   const matches = ((productsResult.data ?? []) as unknown as SearchRow[]).flatMap((product) => {
+    if (!product.primary_image_url?.trim()) return [];
     if (!product.category) return [];
     const offers = product.product_offers.filter(isDatabaseOfferPubliclyVisible);
     const eligibleOffers = offers.filter(isDatabaseOfferEligibleForPublication);

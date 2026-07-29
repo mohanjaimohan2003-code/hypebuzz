@@ -138,10 +138,12 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     .select("id, name, slug, short_description, description, highlights, specifications, seo_title, seo_description, primary_image_url, brand_id, category_id, updated_at, brand:brands(name, slug), category:categories!inner(name, slug), product_offers(id, current_price, original_price, currency, availability, affiliate_url, is_active, last_checked_at, coupon_note, shipping_note, offer_title, merchant:merchants(name, slug, logo_url, is_active))")
     .eq("slug", slug)
     .eq("status", "published")
+    .not("primary_image_url", "is", null)
+    .neq("primary_image_url", "")
     .maybeSingle();
 
   logProductQueryError("product", error);
-  if (error || !data) return null;
+  if (error || !data || !(data as {primary_image_url?:string|null}).primary_image_url?.trim()) return null;
   const product = data as unknown as ProductRow;
   if (!product.category) return null;
   const imageResult = await supabase.from("product_images").select("id, image_url, alt_text, is_primary, sort_order").eq("product_id",product.id).order("is_primary",{ascending:false}).order("sort_order").returns<Array<{id:string;image_url:string;alt_text:string|null;is_primary:boolean;sort_order:number}>>();
@@ -182,6 +184,8 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
       .select("id, name, slug, primary_image_url, brand:brands(name), category:categories!inner(id), product_offers(current_price, original_price, currency, merchant_id, affiliate_url, availability, is_active, merchant:merchants(is_active))")
       .neq("id", product.id)
       .eq("status", "published")
+      .not("primary_image_url", "is", null)
+      .neq("primary_image_url", "")
       .limit(8);
     const filters = [
       product.category_id ? `category_id.eq.${product.category_id}` : null,
@@ -193,6 +197,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     if (!relatedResult.error) {
       relatedProducts = ((relatedResult.data ?? []) as unknown as RelatedRow[])
         .flatMap((related) => {
+          if (!related.primary_image_url?.trim()) return [];
           const eligibleOffers = related.product_offers.filter(isDatabaseOfferEligibleForPublication);
           if (!eligibleOffers.length) return [];
           const cheapest = [...eligibleOffers].sort((a, b) => Number(a.current_price) - Number(b.current_price))[0];

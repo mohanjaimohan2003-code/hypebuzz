@@ -118,10 +118,10 @@ export async function getHomepageData(): Promise<HomepageData> {
   const supabase = await createClient();
   const productSelect = "id, name, slug, primary_image_url, brand:brands(name), category:categories!inner(id), product_offers(current_price, original_price, currency, merchant_id, affiliate_url, availability, is_active, merchant:merchants(is_active))";
   const [featured, trending, latest, deals, brands, categories] = await Promise.all([
-    runHomepageQuery("featured products", supabase.from("products").select(productSelect).eq("status", "published").eq("is_featured", true).order("updated_at", { ascending: false }).limit(4)),
-    runHomepageQuery("trending products", supabase.from("products").select(productSelect).eq("status", "published").eq("is_trending", true).order("updated_at", { ascending: false }).limit(4)),
-    runHomepageQuery("latest products", supabase.from("products").select(productSelect).eq("status", "published").order("created_at", { ascending: false }).limit(4)),
-    runHomepageQuery("best deals", supabase.from("products").select(productSelect).eq("status", "published").order("updated_at", { ascending: false }).limit(100)),
+    runHomepageQuery("featured products", supabase.from("products").select(productSelect).eq("status", "published").not("primary_image_url", "is", null).neq("primary_image_url", "").eq("is_featured", true).order("updated_at", { ascending: false }).limit(4)),
+    runHomepageQuery("trending products", supabase.from("products").select(productSelect).eq("status", "published").not("primary_image_url", "is", null).neq("primary_image_url", "").eq("is_trending", true).order("updated_at", { ascending: false }).limit(4)),
+    runHomepageQuery("latest products", supabase.from("products").select(productSelect).eq("status", "published").not("primary_image_url", "is", null).neq("primary_image_url", "").order("created_at", { ascending: false }).limit(4)),
+    runHomepageQuery("best deals", supabase.from("products").select(productSelect).eq("status", "published").not("primary_image_url", "is", null).neq("primary_image_url", "").order("updated_at", { ascending: false }).limit(100)),
     runHomepageQuery("popular brands", supabase.from("brands").select("id, name, slug, products(count)").eq("is_active", true).order("name").limit(100)),
     runHomepageQuery("featured categories", supabase.from("categories").select("id, name, slug, products(count)").eq("is_active", true).order("name").limit(8)),
   ]);
@@ -153,6 +153,8 @@ export async function getTrendingProducts(): Promise<{
     .from("products")
     .select("id, name, slug, primary_image_url, brand:brands(name), category:categories!inner(id), product_offers(current_price, original_price, currency, merchant_id, affiliate_url, availability, is_active, merchant:merchants(is_active))")
     .eq("status", "published")
+    .not("primary_image_url", "is", null)
+    .neq("primary_image_url", "")
     .eq("is_trending", true)
     .order("updated_at", { ascending: false })
     .limit(48);

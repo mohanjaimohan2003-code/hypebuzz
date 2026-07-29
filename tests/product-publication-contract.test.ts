@@ -57,7 +57,7 @@ function productForm(status: "draft" | "published", offers: unknown[]) {
   form.set("slug", "test-phone");
   form.set("categoryId", categoryId);
   form.set("status", status);
-  form.set("imageManifest", "[]");
+  form.set("imageManifest", JSON.stringify([{kind:"external",url:"https://example.com/product.webp",isPrimary:true}]));
   form.set("offerManifest", JSON.stringify(offers));
   return form;
 }
@@ -83,6 +83,13 @@ function manifestOffer(overrides: Record<string, unknown> = {}) {
 test("draft without an offer is valid", () => {
   assert.equal(validateProductForm(productForm("draft", [])).success, true);
   assert.deepEqual(publicationReadiness({ status: "draft", categoryIsActive: false, offers: [] }), []);
+});
+
+test("draft without an image is rejected before saving", () => {
+  const form=productForm("draft",[]); form.set("imageManifest","[]");
+  const result=validateProductForm(form);
+  assert.equal(result.success,false);
+  if(!result.success) assert.equal(result.state.fieldErrors.imageUrl,"Upload at least one product image before saving.");
 });
 
 test("published product without an offer is invalid", () => {

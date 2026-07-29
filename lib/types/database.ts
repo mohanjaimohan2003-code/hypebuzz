@@ -283,6 +283,7 @@ export type Database = {
       };
       delete_failed_product: { Args: { p_product_id: string }; Returns: undefined };
       replace_product_images: { Args: { p_product_id: string; p_images: Json }; Returns: undefined };
+      create_product_with_images_and_offers: { Args: { p_product: Json; p_images: Json; p_offers: Json }; Returns: string };
       replace_product_offers: { Args: { p_product_id: string; p_offers: Json }; Returns: undefined };
       permanently_delete_archived_product: { Args: { p_product_id: string }; Returns: string };
     };

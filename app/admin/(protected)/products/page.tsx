@@ -21,6 +21,7 @@ const notices: Record<string, string> = {
   updated: "Product updated successfully.",
   archived: "Product archived successfully.",
   deleted: "Product permanently deleted. Its slug is now available.",
+  deleted_warning: "Product permanently deleted. Its slug is now available. Image storage cleanup could not be fully verified; see server logs for the exact warning.",
 };
 
 function getFirst(value: string | string[] | undefined) {

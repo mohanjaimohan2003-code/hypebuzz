@@ -13,6 +13,8 @@ export async function getPublishedProductsForSitemap(): Promise<SitemapProduct[]
     .from("products")
     .select("slug, updated_at")
     .eq("status", "published")
+    .not("primary_image_url", "is", null)
+    .neq("primary_image_url", "")
     .order("updated_at", { ascending: false })
     .returns<SitemapProductRow[]>();
 

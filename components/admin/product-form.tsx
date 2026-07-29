@@ -86,6 +86,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   const seoDetailsRef = useRef<HTMLDetailsElement>(null);
   const offersRef = useRef<ProductOffersFieldHandle>(null);
   const imagesRef = useRef<ProductImagesFieldHandle>(null);
+  const submissionLockRef = useRef(false);
   const action = mode === "create" ? createProduct : updateProduct.bind(null, product?.id ?? "");
   const [state, formAction, isPending] = useActionState(action, initialProductActionState);
   const validationErrors = state.validationErrors?.map(({ field, message }) => [field, message] as [ProductField, string])
@@ -103,6 +104,10 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
     const element = firstId ? document.getElementById(firstId) : null;
     requestAnimationFrame(() => { element?.scrollIntoView({ behavior:"smooth",block:"center" }); element?.focus({ preventScroll:true }); });
   }, [state.status, state.fieldErrors]);
+
+  useEffect(() => {
+    if (!isPending) submissionLockRef.current = false;
+  }, [isPending, state]);
 
   function describedBy(field: ProductField, hintId?: string) {
     const errorId = state.fieldErrors[field] ? `${field}-error` : "";
@@ -130,7 +135,11 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
   }
 
   return (
-    <form action={formAction} className="mt-8 space-y-8" noValidate onSubmit={(event) => { if (imagesRef.current && !imagesRef.current.prepareSubmission()) event.preventDefault(); }}>
+    <form action={formAction} className="mt-8 space-y-8" noValidate onSubmit={(event) => {
+      if (submissionLockRef.current) { event.preventDefault(); return; }
+      if (imagesRef.current && !imagesRef.current.prepareSubmission()) { event.preventDefault(); return; }
+      submissionLockRef.current = true;
+    }}>
       {product?.status === "archived" ? (
         <div className="rounded-[10px] border border-[#D1D5DB] bg-[#F3F4F6] px-4 py-3 text-sm text-[#374151]">
           This product is archived. Saving it as Draft or Published will reactivate it.
@@ -140,6 +149,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
       {showValidationBanner || showGeneralError ? (
         <div aria-live="polite" className="rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">
           <p className="whitespace-pre-line font-bold">{state.message}</p>
+          {state.existingProductId ? <Link className="mt-3 inline-flex min-h-10 items-center rounded-[10px] bg-white px-4 text-sm font-semibold text-[#991B1B] underline underline-offset-2" href={`/admin/products/${state.existingProductId}/edit`}>Edit existing product</Link> : null}
           {showValidationBanner ? <ul className="mt-2 list-disc space-y-1 pl-5">{uniqueValidationErrors.map(([field, reason]) => <li key={field}><a className="underline underline-offset-2" href={`#${fieldElementIds[field] ?? "product-form-errors"}`}>{reason}</a></li>)}</ul> : null}
         </div>
       ) : null}

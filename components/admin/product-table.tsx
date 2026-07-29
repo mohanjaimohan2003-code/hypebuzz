@@ -65,6 +65,7 @@ export function ProductTable({ products }: { products: AdminProductListItem[] })
                 <h2 className="truncate font-semibold text-[#111827]">{product.name}</h2>
                 <p className="mt-1 truncate text-sm text-[#6B7280]">{product.categoryName ?? "Uncategorized"}</p>
                 <div className="mt-2"><ProductStatusBadge status={product.status} /></div>
+                {!product.imageUrl?.trim() ? <p className="mt-2 text-xs font-bold text-[#B91C1C]">Image missing — open Edit to repair before publishing.</p> : null}
               </div>
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[#E5E7EB] pt-4 text-sm">
@@ -100,6 +101,7 @@ export function ProductTable({ products }: { products: AdminProductListItem[] })
                     <div className="min-w-0">
                       <p className="max-w-xs truncate text-sm font-semibold text-[#111827]">{product.name}</p>
                       <p className="mt-1 max-w-xs truncate text-xs text-[#6B7280]">/{product.slug}</p>
+                      {!product.imageUrl?.trim() ? <p className="mt-1 text-xs font-bold text-[#B91C1C]">Image missing — edit to repair</p> : null}
                     </div>
                   </div>
                 </th>

@@ -174,6 +174,12 @@ export async function getAdminProductEditorData(productId: string) {
     supabase.from("product_images").select("*").eq("product_id", productId).order("sort_order").returns<ProductImage[]>(),
   ]);
 
+  if(imagesResult.error) console.error({
+    step:"load product_images for admin editor",productId,
+    code:imagesResult.error.code,message:imagesResult.error.message,
+    details:imagesResult.error.details,hint:imagesResult.error.hint,
+  });
+
   return {
     product: productResult.error ? null : productResult.data,
     categories: categoryResult.error
@@ -189,6 +195,7 @@ export async function getAdminProductEditorData(productId: string) {
     offer: offerResult.error ? null : offerResult.data?.[0] ?? null,
     offers: offerResult.error ? [] : offerResult.data ?? [],
     images: imagesResult.error ? [] : (imagesResult.data ?? []).map(image => ({ id: image.id, imageUrl: image.image_url, sourceType: image.source_type, isPrimary: image.is_primary, sortOrder: image.sort_order })),
+    imageError: imagesResult.error ? `[load product_images for admin editor] ${imagesResult.error.code ?? "unknown"}: ${imagesResult.error.message}${imagesResult.error.details ? ` Details: ${imagesResult.error.details}` : ""}${imagesResult.error.hint ? ` Hint: ${imagesResult.error.hint}` : ""}` : null,
     hasError: Boolean(productResult.error || categoryResult.error || brandResult.error || merchantResult.error || offerResult.error || imagesResult.error),
   };
 }

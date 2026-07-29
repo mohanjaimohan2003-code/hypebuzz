@@ -14,7 +14,7 @@ export default async function EditProductPage({
   params: Promise<{ productId: string }>;
 }) {
   const { productId } = await params;
-  const { product, categories, brands, merchants, offer, offers, images, hasError } = await getAdminProductEditorData(productId);
+  const { product, categories, brands, merchants, offer, offers, images, imageError, hasError } = await getAdminProductEditorData(productId);
 
   if (!product && !hasError) notFound();
 
@@ -42,7 +42,7 @@ export default async function EditProductPage({
 
       {hasError || categories.length === 0 ? (
         <div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">
-          Categories could not be loaded. Product changes are disabled until category access is restored.
+          <span className="whitespace-pre-line">{imageError ?? "Catalog references could not be loaded. Product changes are disabled until database access is restored."}</span>
         </div>
       ) : null}
 

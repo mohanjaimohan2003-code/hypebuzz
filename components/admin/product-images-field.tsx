@@ -104,6 +104,7 @@ export const ProductImagesField = forwardRef<ProductImagesFieldHandle, {
   }
 
   useImperativeHandle(ref, () => ({ prepareSubmission() {
+    if (items.length === 0) { setLocalError("Upload at least one product image before saving."); return false; }
     if (!pendingFilesAreAvailable()) { removeLostUploadPreviews(); return false; }
     if (!syncFileInput()) { removeLostUploadPreviews(true); return false; }
     return true;
@@ -315,7 +316,7 @@ export const ProductImagesField = forwardRef<ProductImagesFieldHandle, {
             </article>
           ))}
         </div>
-      ) : <p className="mt-5 rounded-xl bg-[#F8FAFC] p-5 text-center text-sm text-[#6B7280]">No images selected. Existing URL-only products can still be saved without images.</p>}
+      ) : <p className="mt-5 rounded-xl bg-[#FEF2F2] p-5 text-center text-sm font-medium text-[#991B1B]">Upload at least one product image before saving.</p>}
 
       {editingIndex !== null && items[editingIndex]?.kind === "upload" && items[editingIndex].fileIndex !== undefined && filesRef.current[items[editingIndex].fileIndex!] ? (
         <ProductImageEditor file={filesRef.current[items[editingIndex].fileIndex!]} isPrimary={editingIndex === primary} onApply={(file) => applyEdit(editingIndex, file)} onCancel={() => setEditingIndex(null)} sourceUrl={items[editingIndex].url} />

@@ -62,6 +62,7 @@ export type ProductActionState = {
   fieldErrors: ProductFieldErrors;
   validationErrors?: Array<{ field: ProductField; message: string }>;
   validationMode?: "draft" | "publish";
+  existingProductId?: string;
 };
 
 export const initialProductActionState: ProductActionState = {
@@ -150,7 +151,8 @@ export function validateProductForm(formData: FormData):
   }
 
   const files = formData.getAll("uploadedImages").filter((value): value is File => value instanceof File && value.size > 0);
-  if (imageManifest.length > 8) fieldErrors.imageUrl = "You can upload up to 8 product images.";
+  if (imageManifest.length === 0) fieldErrors.imageUrl = "Upload at least one product image before saving.";
+  else if (imageManifest.length > 8) fieldErrors.imageUrl = "You can upload up to 8 product images.";
   else if (imageManifest.some((image) => !image || typeof image !== "object" || !["existing", "external", "upload"].includes(image.kind))) fieldErrors.imageUrl = "The product image list is invalid.";
   else if (imageManifest.length > 0 && imageManifest.filter((image) => image.isPrimary === true).length !== 1) fieldErrors.imageUrl = "Choose exactly one primary image.";
   else for (const image of imageManifest) {
