@@ -5,6 +5,18 @@ import type { ProductReview, PublicReview, ReviewRatingFilter, ReviewSort, Revie
 type SummaryRow = { total_reviews: number; average_rating: number | null; five_star: number; four_star: number; three_star: number; two_star: number; one_star: number };
 const emptySummary: ReviewSummary = { totalReviews: 0, averageRating: null, counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
 
+type SupabaseDiagnostic = { code?: string; message?: string; details?: string; hint?: string };
+
+function logReviewQueryError(query: "summary" | "list" | "admin list", error: SupabaseDiagnostic | null) {
+  if (!error) return;
+  console.error(`Product review ${query} query failed`, {
+    code: error.code ?? "unknown",
+    message: error.message ?? "Unknown Supabase error",
+    details: error.details ?? "not reported",
+    hint: error.hint ?? "not reported",
+  });
+}
+
 export async function getPublicProductReviews(productId: string, options: { rating: ReviewRatingFilter; sort: ReviewSort; limit: number }) {
   const supabase = await createClient();
   let query = supabase.from("product_reviews")
@@ -19,8 +31,8 @@ export async function getPublicProductReviews(productId: string, options: { rati
     supabase.rpc("get_product_review_summary", { p_product_id: productId }).maybeSingle<SummaryRow>(),
     query.range(0, options.limit - 1).returns<PublicReview[]>(),
   ]);
-  if (summaryResult.error) console.error("Product review summary query failed", { code: summaryResult.error.code, message: summaryResult.error.message });
-  if (reviewResult.error) console.error("Product review list query failed", { code: reviewResult.error.code, message: reviewResult.error.message });
+  logReviewQueryError("summary", summaryResult.error);
+  logReviewQueryError("list", reviewResult.error);
   const row = summaryResult.data;
   const summary = row ? {
     totalReviews: Number(row.total_reviews), averageRating: row.average_rating === null ? null : Number(row.average_rating),
@@ -41,6 +53,6 @@ export async function getAdminProductReviews(status: ProductReview["status"] | "
     .order("created_at", { ascending: false }).limit(100);
   if (status !== "all") query = query.eq("status", status);
   const { data, error } = await query;
-  if (error) console.error("Admin product reviews query failed", { code: error.code, message: error.message });
+  logReviewQueryError("admin list", error);
   return { reviews: (data ?? []) as unknown as Array<Omit<ProductReview, "user_id"> & { product: { name: string; slug: string } | null }>, hasError: Boolean(error) };
 }

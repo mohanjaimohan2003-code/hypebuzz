@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Footer } from "@/components/layout/footer";
 import { HomepageHeader } from "@/components/layout/homepage-header";
+import { MerchantLogo } from "@/components/product/merchant-logo";
 import { PriceComparison } from "@/components/product/price-comparison";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductGallery } from "@/components/product/product-gallery";
@@ -11,6 +12,7 @@ import { ProductDescription, ProductHighlights, ProductSpecifications } from "@/
 import { getPublicProduct } from "@/lib/data/public-product";
 import { getPublicProductReviews } from "@/lib/data/product-reviews";
 import { schemaAvailability } from "@/lib/offers/publication-contract";
+import { availabilityLabel, getBestEligibleOffer } from "@/lib/offers/price-comparison";
 import { productSeoCopy } from "@/lib/products/seo";
 import { parseReviewLimit, parseReviewRating, parseReviewSort } from "@/lib/reviews/model";
 import { absoluteUrl, jsonLd } from "@/lib/seo/site";
@@ -63,6 +65,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const reviewRating = parseReviewRating(reviewParams.reviewRating);
   const reviewLimit = parseReviewLimit(reviewParams.reviewLimit);
   const reviewData = await getPublicProductReviews(product.id, { sort: reviewSort, rating: reviewRating, limit: reviewLimit });
+  const bestOffer = getBestEligibleOffer(product.offers);
 
   const canonical = absoluteUrl(`/products/${product.slug}`);
   const breadcrumbItems = [
@@ -132,10 +135,11 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               <dl className="mt-6 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-5">
                 <div><dt className="text-sm text-[#6B7280]">Lowest price</dt><dd className="mt-1 text-2xl font-bold text-[#111827]">{product.lowestPrice === null ? "No active offer" : money(product.lowestPrice, product.currency)}</dd></div>
                 <div><dt className="text-sm text-[#6B7280]">Highest discount</dt><dd className="mt-1 text-xl font-bold text-[#15803D]">{product.highestDiscount === null ? "—" : `${Math.round(product.highestDiscount)}% off`}</dd></div>
-                <div><dt className="text-sm text-[#6B7280]">Availability</dt><dd className="mt-1 font-semibold text-[#111827]">{product.availability}</dd></div>
-                <div><dt className="text-sm text-[#6B7280]">Last updated</dt><dd className="mt-1 font-semibold text-[#111827]"><time dateTime={product.updatedAt}>{new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(product.updatedAt))}</time></dd></div>
+                <div><dt className="text-sm text-[#6B7280]">Availability</dt><dd className="mt-1 font-semibold text-[#111827]">{bestOffer ? availabilityLabel(bestOffer.availability) : "Unavailable"}</dd></div>
+                <div><dt className="text-sm text-[#6B7280]">Stores</dt><dd className="mt-1 font-semibold text-[#111827]">{product.activeMerchantCount} {product.activeMerchantCount === 1 ? "store" : "stores"}</dd></div>
               </dl>
-              {product.offers[0] ? <a className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-[10px] border border-[#EA580C] bg-[#F97316] px-6 font-bold text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2" href="#compare-prices">Compare all {product.offers.length} {product.offers.length === 1 ? "offer" : "offers"}</a> : null}
+              {product.offers.length ? <a className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-[10px] border border-[#2563EB] bg-white px-6 font-semibold text-[#1D4ED8] transition-colors hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none" href="#compare-prices">Compare all {product.offers.length} {product.offers.length === 1 ? "offer" : "offers"}</a> : null}
+              {bestOffer ? <><a className="mt-3 inline-flex min-h-14 w-full items-center justify-between gap-3 rounded-[10px] border border-[#EA580C] bg-[#F97316] px-4 font-bold text-[#111827] transition-colors hover:bg-[#FB923C] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none sm:px-5" href={`/go/${bestOffer.id}`} rel="sponsored nofollow noopener noreferrer" target="_blank"><MerchantLogo merchant={bestOffer.merchant} variant="cta" /><span className="min-w-0 flex-1 text-center">Buy now on {bestOffer.merchant.name}</span><span aria-hidden="true" className="shrink-0">↗</span></a><div className="mt-3 space-y-1 text-sm"><p className="font-medium text-[#166534]"><span aria-hidden="true">✓</span> Latest listed price.</p><p className="text-[#6B7280]">Final price and availability are confirmed on the store.</p></div></> : null}
             </section>
           </div>
 

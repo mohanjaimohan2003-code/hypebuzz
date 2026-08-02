@@ -34,6 +34,12 @@ test("database failures remain visible without hiding Customer Reviews",()=>{
   assert.match(html,/Customer Reviews/); assert.match(html,/Reviews are temporarily unavailable/); assert.doesNotMatch(html,/No reviews yet/);
 });
 
+test("review query diagnostics include the complete safe Supabase error shape",()=>{
+  const source=readFileSync("lib/data/product-reviews.ts","utf8");
+  assert.match(source,/code: error\.code/); assert.match(source,/message: error\.message/);
+  assert.match(source,/details: error\.details/); assert.match(source,/hint: error\.hint/);
+});
+
 test("public filtering, sorting, and pagination exclude pending and rejected reviews",()=>{
   const rows:ProductReview[]=[{...base,id:"5",rating:5,created_at:"2026-01-01T00:00:00Z"},{...base,id:"4",rating:4,created_at:"2026-03-01T00:00:00Z"},{...base,id:"1",status:"pending"},{...base,id:"2",status:"rejected"},{...base,id:"3",rating:4,created_at:"2026-02-01T00:00:00Z"}];
   assert.deepEqual(filterSortPaginateReviews(rows,"all","recent",2).reviews.map(r=>r.id),["4","3"]);

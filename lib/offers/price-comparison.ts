@@ -41,3 +41,11 @@ export function sortPublicOffers<T extends { currentPrice: number; availability:
     return left.currentPrice - right.currentPrice;
   });
 }
+
+export function getBestEligibleOffer<T extends { currentPrice: number; availability: string | null }>(offers: T[]) {
+  return sortPublicOffers(offers).find(isEligiblePrice) ?? null;
+}
+
+export function countEligibleStores<T extends { currentPrice: number; availability: string | null; merchant: { slug: string } }>(offers: T[]) {
+  return new Set(offers.filter(isEligiblePrice).map((offer) => offer.merchant.slug)).size;
+}

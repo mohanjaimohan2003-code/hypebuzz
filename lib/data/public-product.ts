@@ -4,7 +4,7 @@ import { cache } from "react";
 import type { ProductCardProduct } from "@/components/product/product-card";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/lib/types/database";
-import { discountPercent, savingsAmount, sortPublicOffers } from "@/lib/offers/price-comparison";
+import { countEligibleStores, discountPercent, savingsAmount, sortPublicOffers } from "@/lib/offers/price-comparison";
 import { isDatabaseOfferEligibleForPublication, isDatabaseOfferPubliclyVisible } from "@/lib/offers/publication-contract";
 
 export type PublicProductOffer = {
@@ -243,7 +243,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     highestDiscount,
     highestPrice: offers.length ? Math.max(...offers.map((offer) => offer.currentPrice)) : null,
     maximumSavings: offers.reduce<number | null>((maximum, offer) => offer.savings === null ? maximum : Math.max(maximum ?? 0, offer.savings), null),
-    activeMerchantCount: new Set(offers.map((offer) => offer.merchant.slug)).size,
+    activeMerchantCount: countEligibleStores(offers),
     currency: offers[0]?.currency ?? "INR",
     availability: offers.some((offer) => isInStock(offer.availability))
       ? "Available"

@@ -1,19 +1,11 @@
 import type { PublicProductOffer } from "@/lib/data/public-product";
 import { availabilityLabel } from "@/lib/offers/price-comparison";
+import { MerchantLogo } from "@/components/product/merchant-logo";
 
 function money(value: number, currency: string) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 const checkedDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" });
-
-function MerchantLogo({ offer }: { offer: PublicProductOffer }) {
-  if (offer.merchant.logoUrl) {
-    // Merchant logos may be hosted by any approved merchant.
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img alt="" className="h-10 w-10 rounded-[10px] object-contain" src={offer.merchant.logoUrl} />;
-  }
-  return <span aria-hidden="true" className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-[#EFF6FF] font-bold text-[#1D4ED8]">{offer.merchant.name.charAt(0)}</span>;
-}
 
 export function PriceComparison({ offers }: { offers: PublicProductOffer[] }) {
   return (
@@ -29,8 +21,8 @@ export function PriceComparison({ offers }: { offers: PublicProductOffer[] }) {
             <article className={`rounded-2xl border bg-white p-4 sm:p-5 ${offer.isLowestPrice ? "border-[#2563EB] ring-2 ring-[#DBEAFE]" : "border-[#E5E7EB]"}`} key={offer.id}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <MerchantLogo offer={offer} />
-                  <div className="min-w-0"><h3 className="font-semibold text-[#111827]">{offer.merchant.name}</h3>{offer.offerTitle ? <p className="text-sm text-[#374151]">{offer.offerTitle}</p> : null}<p className="text-sm text-[#6B7280]">{availabilityLabel(offer.availability)}</p><p className="text-xs text-[#6B7280]">Checked {offer.lastCheckedAt ? checkedDate.format(new Date(offer.lastCheckedAt)) : "date unavailable"}</p></div>
+                  <MerchantLogo merchant={offer.merchant} />
+                  <div className="min-w-0"><h3 className="font-semibold text-[#111827]">{offer.merchant.name}</h3>{offer.offerTitle ? <p className="text-sm text-[#374151]">{offer.offerTitle}</p> : null}<p className="text-sm text-[#6B7280]">{availabilityLabel(offer.availability)}</p>{offer.lastCheckedAt ? <p className="text-xs text-[#6B7280]">Checked {checkedDate.format(new Date(offer.lastCheckedAt))}</p> : null}</div>
                   {offer.isLowestPrice ? <span className="ml-auto rounded-full bg-[#DBEAFE] px-3 py-1 text-xs font-bold text-[#1D4ED8]">Best Price</span> : null}
                 </div>
                 <div className="flex items-end justify-between gap-4 sm:block sm:min-w-32 sm:text-right">
