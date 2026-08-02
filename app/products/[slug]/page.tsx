@@ -7,8 +7,9 @@ import { MerchantLogo } from "@/components/product/merchant-logo";
 import { PriceComparison } from "@/components/product/price-comparison";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductGallery } from "@/components/product/product-gallery";
-import { ProductReviews } from "@/components/product/product-reviews";
-import { ProductDescription, ProductHighlights, ProductSpecifications } from "@/components/product/product-rich-content";
+import { ProductInformationTabs } from "@/components/product/product-information-tabs";
+import { ProductHighlights } from "@/components/product/product-rich-content";
+import { ReviewStars } from "@/components/product/review-stars";
 import { getPublicProduct } from "@/lib/data/public-product";
 import { getPublicProductReviews } from "@/lib/data/product-reviews";
 import { schemaAvailability } from "@/lib/offers/publication-contract";
@@ -122,19 +123,20 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             </ol>
           </nav>
 
-          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)] lg:items-start">
+          <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(24rem,1.1fr)] lg:items-start">
             <ProductGallery imageUrl={product.imageUrl} images={product.images} productName={product.name} />
-            <section aria-labelledby="product-title" className="lg:sticky lg:top-24">
+            <section aria-labelledby="product-title" className="min-w-0 lg:pt-1">
               <div className="flex flex-wrap gap-2 text-sm font-medium text-[#1D4ED8]">
+                {bestOffer?.discount ? <span className="rounded-full bg-[#DCFCE7] px-3 py-1 font-bold text-[#166534]">{bestOffer.discount}% off</span> : null}
                 {product.brand ? <Link className="rounded-full bg-[#EFF6FF] px-3 py-1 hover:underline" href={`/search?brand=${product.brand.slug}`}>{product.brand.name}</Link> : null}
                 {product.category ? <Link className="rounded-full bg-white px-3 py-1 ring-1 ring-[#E5E7EB] hover:underline" href={`/categories/${product.category.slug}`}>{product.category.name}</Link> : null}
               </div>
               <h1 className="mt-4 text-3xl font-bold tracking-tight text-[#111827] sm:text-4xl" id="product-title">{product.name}</h1>
+              <div className="mt-3 inline-flex items-center gap-2 text-sm text-[#4B5563]">{reviewData.summary.averageRating !== null ? <><ReviewStars rating={reviewData.summary.averageRating} size="sm" /><span className="font-semibold text-[#111827]">{reviewData.summary.averageRating.toFixed(1)}</span><span>({reviewData.summary.totalReviews} {reviewData.summary.totalReviews === 1 ? "review" : "reviews"})</span></> : <span>No reviews yet</span>}</div>
+              <div className="mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1"><p className="text-3xl font-bold tracking-tight text-[#111827]">{bestOffer ? money(bestOffer.currentPrice, bestOffer.currency) : "No active offer"}</p>{bestOffer?.originalPrice ? <p className="text-lg text-[#6B7280] line-through">{money(bestOffer.originalPrice, bestOffer.currency)}</p> : null}{bestOffer?.discount ? <p className="font-bold text-[#15803D]">Save {bestOffer.discount}%</p> : null}</div>
               {product.shortDescription ? <p className="mt-4 text-lg leading-7 text-[#4B5563]">{product.shortDescription}</p> : null}
               <ProductHighlights highlights={product.features} />
-              <dl className="mt-6 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-5">
-                <div><dt className="text-sm text-[#6B7280]">Lowest price</dt><dd className="mt-1 text-2xl font-bold text-[#111827]">{product.lowestPrice === null ? "No active offer" : money(product.lowestPrice, product.currency)}</dd></div>
-                <div><dt className="text-sm text-[#6B7280]">Highest discount</dt><dd className="mt-1 text-xl font-bold text-[#15803D]">{product.highestDiscount === null ? "—" : `${Math.round(product.highestDiscount)}% off`}</dd></div>
+              <dl className="mt-6 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4">
                 <div><dt className="text-sm text-[#6B7280]">Availability</dt><dd className="mt-1 font-semibold text-[#111827]">{bestOffer ? availabilityLabel(bestOffer.availability) : "Unavailable"}</dd></div>
                 <div><dt className="text-sm text-[#6B7280]">Stores</dt><dd className="mt-1 font-semibold text-[#111827]">{product.activeMerchantCount} {product.activeMerchantCount === 1 ? "store" : "stores"}</dd></div>
               </dl>
@@ -143,11 +145,10 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
             </section>
           </div>
 
-          <div className="mt-12"><ProductDescription description={product.description} /></div>
-          <div className="mt-10 grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start"><ProductSpecifications specifications={product.specifications} /><ProductReviews hasError={reviewData.hasError} hasMore={reviewData.hasMore} limit={reviewLimit} rating={reviewRating} reviews={reviewData.reviews} slug={product.slug} sort={reviewSort} summary={reviewData.summary} /></div>
-          <div className="mt-10"><dl className="mb-5 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4"><div><dt className="text-xs text-[#6B7280]">Stores</dt><dd className="text-lg font-bold">{product.activeMerchantCount}</dd></div><div><dt className="text-xs text-[#6B7280]">Maximum savings</dt><dd className="text-lg font-bold text-[#15803D]">{product.maximumSavings === null ? "—" : money(product.maximumSavings, product.currency)}</dd></div></dl><PriceComparison offers={product.offers} /></div>
+          <ProductInformationTabs description={product.description} initialTab={reviewSort !== "recent" || reviewRating !== "all" || reviewLimit > 5 ? "reviews" : "about"} reviewData={{ hasError: reviewData.hasError, hasMore: reviewData.hasMore, limit: reviewLimit, rating: reviewRating, reviews: reviewData.reviews, slug: product.slug, sort: reviewSort, summary: reviewData.summary }} specifications={product.specifications} />
+          <div className="mt-8"><PriceComparison offers={product.offers} /></div>
 
-          {product.relatedProducts.length ? <section aria-labelledby="related-heading" className="py-12 sm:py-16"><h2 className="text-2xl font-bold text-[#111827] sm:text-3xl" id="related-heading">Related products</h2><p className="mt-2 text-sm text-[#6B7280]">More products from the same brand or category.</p><div className="mt-6 grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{product.relatedProducts.map((related) => <ProductCard key={related.id} product={related} />)}</div></section> : null}
+          {product.relatedProducts.length ? <section aria-labelledby="related-heading" className="py-10 sm:py-12"><h2 className="text-2xl font-bold text-[#111827] sm:text-3xl" id="related-heading">You might also like</h2><p className="mt-2 text-sm text-[#6B7280]">More products from the same brand or category.</p><div className="mt-5 grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{product.relatedProducts.map((related) => <ProductCard key={related.id} product={related} />)}</div></section> : null}
         </div>
       </main>
       <Footer />

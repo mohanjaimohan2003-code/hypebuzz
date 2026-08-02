@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "npm run test:publication && npm run test:product-import && npm run test:rich-products && npm run test:workflow && npm run test:production && npm run test:compare && npm run test:reviews && npm run test:product-cta",
+    "test": "npm run test:publication && npm run test:product-import && npm run test:rich-products && npm run test:workflow && npm run test:production && npm run test:compare && npm run test:reviews && npm run test:product-cta && npm run test:gallery && npm run test:product-page",
     "test:publication": "tsx --test tests/product-publication-contract.test.ts",
     "test:product-import": "tsx --test tests/product-json-import.test.ts",
     "test:rich-products": "tsx --test tests/rich-product-fields.test.ts",
@@ -15,7 +15,9 @@
     "test:production": "tsx --test tests/production-stability.test.ts",
     "test:compare": "tsx --test tests/compare-workflow.test.ts",
     "test:reviews": "tsx --test tests/product-reviews.test.ts",
-    "test:product-cta": "tsx --test tests/product-cta.test.ts"
+    "test:product-cta": "tsx --test tests/product-cta.test.ts",
+    "test:gallery": "tsx --test tests/product-gallery.test.ts",
+    "test:product-page": "tsx --test tests/product-page-layout.test.ts tests/product-information-tabs.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

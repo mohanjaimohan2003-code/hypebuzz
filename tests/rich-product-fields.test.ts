@@ -96,7 +96,7 @@ test("product rich content displays populated fields", () => {
   const highlights = renderToStaticMarkup(createElement(ProductHighlights, { highlights: ["Fast"] }));
   const details = renderToStaticMarkup(createElement(ProductRichDetails, { description: "Plain text", specifications: [{ name: "Weight", value: "1 kg" }] }));
   assert.match(highlights, /Highlights/); assert.match(highlights, /Fast/);
-  assert.match(details, /About this product/); assert.match(details, /Specifications/); assert.match(details, /1 kg/);
+  assert.match(details, /About This Product/); assert.match(details, /Specifications/); assert.match(details, /1 kg/);
 });
 
 test("product rich content hides empty sections", () => {
