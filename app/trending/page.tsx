@@ -24,7 +24,7 @@ export default async function TrendingPage() {
           </header>
           {hasError ? <div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm text-[#991B1B]" role="alert">Trending products could not be loaded. Please try again.</div> : null}
           {products.length ? (
-            <section aria-label="Trending products" className="mt-8 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-4">
+            <section aria-label="Trending products" className="mt-8 grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {products.map((product) => <ProductCard key={product.id} product={product} />)}
             </section>
           ) : !hasError ? <p className="mt-8 rounded-2xl border border-[#E5E7EB] bg-white p-8 text-[#4B5563]">No published products are marked as trending yet.</p> : null}

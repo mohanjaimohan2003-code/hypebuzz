@@ -6,10 +6,13 @@ import { HomepageHeader } from "@/components/layout/homepage-header";
 import { PriceComparison } from "@/components/product/price-comparison";
 import { ProductCard } from "@/components/product/product-card";
 import { ProductGallery } from "@/components/product/product-gallery";
-import { ProductHighlights, ProductRichDetails } from "@/components/product/product-rich-content";
+import { ProductReviews } from "@/components/product/product-reviews";
+import { ProductDescription, ProductHighlights, ProductSpecifications } from "@/components/product/product-rich-content";
 import { getPublicProduct } from "@/lib/data/public-product";
+import { getPublicProductReviews } from "@/lib/data/product-reviews";
 import { schemaAvailability } from "@/lib/offers/publication-contract";
 import { productSeoCopy } from "@/lib/products/seo";
+import { parseReviewLimit, parseReviewRating, parseReviewSort } from "@/lib/reviews/model";
 import { absoluteUrl, jsonLd } from "@/lib/seo/site";
 
 function money(value: number, currency: string) {
@@ -49,10 +52,17 @@ export async function generateMetadata({ params }: PageProps<"/products/[slug]">
   };
 }
 
-export default async function ProductPage({ params }: PageProps<"/products/[slug]">) {
+type ProductPageProps = { params: Promise<{ slug: string }>; searchParams: Promise<{ reviewSort?: string | string[]; reviewRating?: string | string[]; reviewLimit?: string | string[] }> };
+
+export default async function ProductPage({ params, searchParams }: ProductPageProps) {
   const { slug } = await params;
+  const reviewParams = await searchParams;
   const product = await getPublicProduct(slug);
   if (!product) notFound();
+  const reviewSort = parseReviewSort(reviewParams.reviewSort);
+  const reviewRating = parseReviewRating(reviewParams.reviewRating);
+  const reviewLimit = parseReviewLimit(reviewParams.reviewLimit);
+  const reviewData = await getPublicProductReviews(product.id, { sort: reviewSort, rating: reviewRating, limit: reviewLimit });
 
   const canonical = absoluteUrl(`/products/${product.slug}`);
   const breadcrumbItems = [
@@ -72,6 +82,10 @@ export default async function ProductPage({ params }: PageProps<"/products/[slug
         brand: product.brand ? { "@type": "Brand", name: product.brand.name } : undefined,
         category: product.category?.name,
         url: canonical,
+        aggregateRating: reviewData.summary.totalReviews && reviewData.summary.averageRating !== null ? {
+          "@type": "AggregateRating", ratingValue: reviewData.summary.averageRating,
+          reviewCount: reviewData.summary.totalReviews, bestRating: 5, worstRating: 1,
+        } : undefined,
         offers: product.offers.length ? {
           "@type": "AggregateOffer",
           priceCurrency: product.currency,
@@ -125,14 +139,11 @@ export default async function ProductPage({ params }: PageProps<"/products/[slug
             </section>
           </div>
 
-          <div className="mt-12 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(22rem,0.8fr)]">
-            <div className="space-y-10">
-              <ProductRichDetails description={product.description} specifications={product.specifications} />
-            </div>
-            <div><dl className="mb-5 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4"><div><dt className="text-xs text-[#6B7280]">Stores</dt><dd className="text-lg font-bold">{product.activeMerchantCount}</dd></div><div><dt className="text-xs text-[#6B7280]">Maximum savings</dt><dd className="text-lg font-bold text-[#15803D]">{product.maximumSavings === null ? "—" : money(product.maximumSavings, product.currency)}</dd></div></dl><PriceComparison offers={product.offers} /></div>
-          </div>
+          <div className="mt-12"><ProductDescription description={product.description} /></div>
+          <div className="mt-10 grid min-w-0 grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start"><ProductSpecifications specifications={product.specifications} /><ProductReviews hasError={reviewData.hasError} hasMore={reviewData.hasMore} limit={reviewLimit} rating={reviewRating} reviews={reviewData.reviews} slug={product.slug} sort={reviewSort} summary={reviewData.summary} /></div>
+          <div className="mt-10"><dl className="mb-5 grid grid-cols-2 gap-3 rounded-2xl border border-[#E5E7EB] bg-white p-4"><div><dt className="text-xs text-[#6B7280]">Stores</dt><dd className="text-lg font-bold">{product.activeMerchantCount}</dd></div><div><dt className="text-xs text-[#6B7280]">Maximum savings</dt><dd className="text-lg font-bold text-[#15803D]">{product.maximumSavings === null ? "—" : money(product.maximumSavings, product.currency)}</dd></div></dl><PriceComparison offers={product.offers} /></div>
 
-          {product.relatedProducts.length ? <section aria-labelledby="related-heading" className="py-12 sm:py-16"><h2 className="text-2xl font-bold text-[#111827] sm:text-3xl" id="related-heading">Related products</h2><p className="mt-2 text-sm text-[#6B7280]">More products from the same brand or category.</p><div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-4">{product.relatedProducts.map((related) => <ProductCard key={related.id} product={related} />)}</div></section> : null}
+          {product.relatedProducts.length ? <section aria-labelledby="related-heading" className="py-12 sm:py-16"><h2 className="text-2xl font-bold text-[#111827] sm:text-3xl" id="related-heading">Related products</h2><p className="mt-2 text-sm text-[#6B7280]">More products from the same brand or category.</p><div className="mt-6 grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{product.relatedProducts.map((related) => <ProductCard key={related.id} product={related} />)}</div></section> : null}
         </div>
       </main>
       <Footer />

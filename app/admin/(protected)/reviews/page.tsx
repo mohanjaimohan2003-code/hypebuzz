@@ -1,0 +1,19 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { ReviewModerationActions } from "@/components/admin/review-moderation-actions";
+import { ReviewStars } from "@/components/product/review-stars";
+import { getAdminProductReviews } from "@/lib/data/product-reviews";
+import type { ReviewStatus } from "@/lib/reviews/model";
+
+export const metadata: Metadata = { title: "Product Reviews | HypeBuzz Admin" };
+function status(value: string | string[] | undefined): ReviewStatus | "all" { const first=Array.isArray(value)?value[0]:value; return first === "approved" || first === "rejected" || first === "pending" ? first : "all"; }
+const badge: Record<ReviewStatus,string> = { pending:"bg-[#FEF3C7] text-[#92400E]", approved:"bg-[#DCFCE7] text-[#166534]", rejected:"bg-[#FEE2E2] text-[#991B1B]" };
+
+export default async function AdminReviewsPage({ searchParams }: { searchParams: Promise<{ status?: string | string[] }> }) {
+  const selected=status((await searchParams).status); const { reviews, hasError }=await getAdminProductReviews(selected);
+  return <div><header><p className="text-sm font-semibold text-[#2563EB]">Catalog moderation</p><h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Product Reviews</h1><p className="mt-3 max-w-2xl leading-7 text-[#6B7280]">Review customer feedback before it appears on public product pages.</p></header>
+    <nav aria-label="Review status" className="mt-7 flex flex-wrap gap-2">{(["all","pending","approved","rejected"] as const).map((item)=><Link className={`rounded-full border px-4 py-2 text-sm font-semibold capitalize ${selected===item?"border-[#2563EB] bg-[#EFF6FF] text-[#1D4ED8]":"border-[#D1D5DB] bg-white text-[#374151]"}`} href={item==="all"?"/admin/reviews":`/admin/reviews?status=${item}`} key={item}>{item}</Link>)}</nav>
+    {hasError?<div className="mt-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-sm font-medium text-[#991B1B]" role="alert">Reviews could not be loaded. Confirm migration 031 and review policies are applied.</div>:null}
+    <section className="mt-6 space-y-4" aria-label="Review records">{reviews.length?reviews.map((review)=><article className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_1px_2px_rgba(17,24,39,0.04)]" key={review.id}><div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="font-bold">{review.reviewer_name}</h2><span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${badge[review.status]}`}>{review.status}</span>{review.is_verified_buyer?<span className="rounded-full bg-[#DCFCE7] px-2 py-0.5 text-xs font-semibold text-[#166534]">Verified Buyer ✓</span>:null}</div><p className="mt-1 text-sm text-[#6B7280]">Product: {review.product?<Link className="font-semibold text-[#1D4ED8] hover:underline" href={`/products/${review.product.slug}`} target="_blank">{review.product.name}</Link>:"Deleted product"} · {new Intl.DateTimeFormat("en-IN",{dateStyle:"medium",timeStyle:"short"}).format(new Date(review.created_at))}</p><div className="mt-3 flex items-center gap-2"><ReviewStars rating={review.rating} size="sm"/><span className="text-sm font-bold">{review.rating.toFixed(1)}</span></div>{review.title?<h3 className="mt-3 font-bold">{review.title}</h3>:null}<p className="mt-2 max-w-3xl whitespace-pre-line break-words text-sm leading-6 text-[#4B5563]">{review.review_text}</p></div><ReviewModerationActions id={review.id} reviewerName={review.reviewer_name} status={review.status}/></div></article>):<div className="rounded-2xl border border-[#E5E7EB] bg-white p-10 text-center"><h2 className="text-xl font-bold">No {selected === "all" ? "reviews" : `${selected} reviews`}</h2><p className="mt-2 text-[#6B7280]">There are no review records in this view.</p></div>}</section>
+  </div>;
+}

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { safeAffiliateDestination } from "@/lib/affiliate/destination";
 
 export type DeviceType = "mobile" | "tablet" | "desktop" | "unknown";
 
@@ -21,15 +22,6 @@ export function classifyDevice(userAgent: string | null): DeviceType {
   if (/mobile|iphone|ipod|android|blackberry|iemobile|opera mini/i.test(userAgent)) return "mobile";
   if (/windows|macintosh|linux|cros/i.test(userAgent)) return "desktop";
   return "unknown";
-}
-
-export function safeAffiliateDestination(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
-  } catch {
-    return null;
-  }
 }
 
 function requestContext(request: Request) {
@@ -62,7 +54,11 @@ export async function resolveAndTrackAffiliateClick(offerId: string, request: Re
     .eq("is_active", true)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error) {
+    console.error("Affiliate offer lookup failed", { step: "resolve affiliate offer", offerId, code: error.code, message: error.message, details: error.details, hint: error.hint });
+    return null;
+  }
+  if (!data) return null;
   const offer = data as unknown as EligibleOffer;
   if (offer.product?.status !== "published" || offer.merchant?.is_active !== true) return null;
 
@@ -71,7 +67,7 @@ export async function resolveAndTrackAffiliateClick(offerId: string, request: Re
 
   const context = requestContext(request);
   try {
-    await supabase.from("affiliate_clicks").insert({
+    const { error: trackingError } = await supabase.from("affiliate_clicks").insert({
       offer_id: offer.id,
       product_id: offer.product_id,
       merchant_id: offer.merchant_id,
@@ -82,8 +78,9 @@ export async function resolveAndTrackAffiliateClick(offerId: string, request: Re
       session_id: null,
       ip_hash: null,
     });
-  } catch {
-    // Analytics failure must not prevent a validated merchant redirect.
+    if (trackingError) console.error("Affiliate click tracking failed", { step: "insert affiliate click", offerId: offer.id, code: trackingError.code, message: trackingError.message, details: trackingError.details, hint: trackingError.hint });
+  } catch (error) {
+    console.error("Affiliate click tracking threw", { step: "insert affiliate click", offerId: offer.id, name: error instanceof Error ? error.name : "UnknownError", message: error instanceof Error ? error.message : "Unknown affiliate tracking error" });
   }
 
   return destination;

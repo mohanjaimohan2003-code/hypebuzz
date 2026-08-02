@@ -3,7 +3,7 @@ export const siteTitle = "Buy Smarter. Every Time. | HypeBuzz";
 export const siteDescription =
   "Discover trending products, explore genuine deals, and make smarter shopping decisions with HypeBuzz.";
 
-const productionSiteUrl = "https://hypebuzz.in";
+const productionSiteUrl = "https://hypebuzzshop.in";
 
 export function getSiteUrl() {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();

@@ -15,7 +15,7 @@ function ProductSection({ title, description, products, href, emptyMessage }: { 
   return (
     <section aria-labelledby={headingId} className="border-t border-[#E5E7EB] py-10 sm:py-12">
       <div className="mb-6 flex items-end justify-between gap-4"><div><h2 className="text-2xl font-bold tracking-tight text-[#111827] sm:text-3xl" id={headingId}>{title}</h2><p className="mt-1 text-sm leading-5 text-[#6B7280]">{description}</p></div><Link className="flex min-h-11 shrink-0 items-center gap-2 rounded-[10px] px-3 text-sm font-semibold text-[#1D4ED8] hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]" href={href}>View all <ArrowIcon /></Link></div>
-      {products.length ? <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-4">{products.map((product) => <ProductCard key={`${title}-${product.id}`} product={product} />)}</div> : <HomeEmptyState message={emptyMessage} />}
+      {products.length ? <div className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{products.map((product) => <ProductCard key={`${title}-${product.id}`} product={product} />)}</div> : <HomeEmptyState message={emptyMessage} />}
     </section>
   );
 }

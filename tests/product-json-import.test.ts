@@ -163,7 +163,7 @@ test("one invalid FAQ entry does not break valid FAQ entries", () => {
 });
 
 test("mobile-friendly importer renders as a collapsed full-width details card", () => {
-  const markup = renderToStaticMarkup(createElement(ProductJsonImporter, { ...references, onApply: () => undefined, onBrandResolved: () => undefined }));
+  const markup = renderToStaticMarkup(createElement(ProductJsonImporter, { ...references, onApply: () => undefined }));
   assert.match(markup, /^<details/);
   assert.doesNotMatch(markup, /<details[^>]* open/);
   assert.match(markup, /w-full/);

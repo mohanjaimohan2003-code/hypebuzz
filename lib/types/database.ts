@@ -9,6 +9,7 @@ export type Json =
 export type ProductStatus = "draft" | "published" | "archived";
 export type BlogPostStatus = "draft" | "published" | "archived";
 export type KnowledgeHubStatus = "draft" | "published";
+export type ProductReviewStatus = "pending" | "approved" | "rejected";
 
 export type KnowledgeHubItem = {
   id: string; title: string; slug: string; description: string; category: string;
@@ -17,6 +18,7 @@ export type KnowledgeHubItem = {
   status: KnowledgeHubStatus; published_at: string | null; created_at: string; updated_at: string;
 };
 export type ProductImage = { id: string; product_id: string; image_url: string; storage_path: string | null; source_type: "upload" | "external"; alt_text: string | null; sort_order: number; is_primary: boolean; created_at: string };
+export type ProductReviewRow = { id: string; product_id: string; user_id: string | null; reviewer_name: string; rating: number; title: string | null; review_text: string; is_verified_buyer: boolean; status: ProductReviewStatus; helpful_count: number; unhelpful_count: number; created_at: string; updated_at: string };
 
 export type BlogCategory = {
   id: string; name: string; slug: string; description: string | null;
@@ -190,6 +192,7 @@ export type Database = {
       >;
       knowledge_hub_items: TableDefinition<KnowledgeHubItem, InsertShape<KnowledgeHubItem>, UpdateShape<KnowledgeHubItem>>;
       product_images: TableDefinition<ProductImage, Omit<ProductImage, "created_at"> & { created_at?: string }, Partial<Omit<ProductImage, "id" | "product_id" | "created_at">>>;
+      product_reviews: TableDefinition<ProductReviewRow, Omit<ProductReviewRow, "id" | "created_at" | "updated_at" | "is_verified_buyer" | "status" | "helpful_count" | "unhelpful_count"> & { id?: string; user_id?: string | null; is_verified_buyer?: false; status?: "pending"; helpful_count?: 0; unhelpful_count?: 0; created_at?: string; updated_at?: string }, Partial<Pick<ProductReviewRow, "status">>>;
     };
     Views: Record<string, never>;
     Functions: {
@@ -284,8 +287,10 @@ export type Database = {
       delete_failed_product: { Args: { p_product_id: string }; Returns: undefined };
       replace_product_images: { Args: { p_product_id: string; p_images: Json }; Returns: undefined };
       create_product_with_images_and_offers: { Args: { p_product: Json; p_images: Json; p_offers: Json }; Returns: string };
+      save_product_workflow: { Args: { p_product_id: string | null; p_product: Json; p_images: Json; p_offers: Json }; Returns: string };
       replace_product_offers: { Args: { p_product_id: string; p_offers: Json }; Returns: undefined };
       permanently_delete_archived_product: { Args: { p_product_id: string }; Returns: string };
+      get_product_review_summary: { Args: { p_product_id: string }; Returns: Array<{ total_reviews: number; average_rating: number | null; five_star: number; four_star: number; three_star: number; two_star: number; one_star: number }> };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

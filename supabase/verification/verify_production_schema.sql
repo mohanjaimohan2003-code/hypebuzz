@@ -12,7 +12,7 @@ with expected(table_name) as (
   values ('categories'), ('brands'), ('products'), ('merchants'),
     ('product_offers'), ('admin_users'), ('affiliate_clicks'),
     ('blog_categories'), ('blog_posts'), ('blog_tags'), ('blog_post_tags'),
-    ('knowledge_hub_items'), ('product_images')
+    ('knowledge_hub_items'), ('product_images'), ('product_reviews')
 )
 select '01_tables' as result_set, e.table_name,
   case when t.table_name is null then 'MISSING' else 'OK' end as status
@@ -38,6 +38,8 @@ with expected(table_name, column_name, expected_type, expected_nullable, expecte
   ('products','short_description','text','YES',null), ('products','description','text','YES',null),
   ('products','category_id','uuid','YES',null), ('products','brand_id','uuid','YES',null),
   ('products','primary_image_url','text','YES',null), ('products','specifications','jsonb','NO','{}'),
+  ('products','highlights','jsonb','NO','[]'), ('products','seo_title','text','YES',null),
+  ('products','seo_description','text','YES',null),
   ('products','status','text','NO','draft'), ('products','is_featured','boolean','NO','false'),
   ('products','is_trending','boolean','NO','false'), ('products','created_at','timestamp with time zone','NO','now()'),
   ('products','updated_at','timestamp with time zone','NO','now()'),
@@ -91,7 +93,14 @@ with expected(table_name, column_name, expected_type, expected_nullable, expecte
   ('product_images','image_url','text','NO',null), ('product_images','storage_path','text','YES',null),
   ('product_images','source_type','text','NO',null), ('product_images','alt_text','text','YES',null),
   ('product_images','sort_order','integer','NO','0'), ('product_images','is_primary','boolean','NO','false'),
-  ('product_images','created_at','timestamp with time zone','NO','now()')
+  ('product_images','created_at','timestamp with time zone','NO','now()'),
+  ('product_reviews','id','uuid','NO','gen_random_uuid()'), ('product_reviews','product_id','uuid','NO',null),
+  ('product_reviews','user_id','uuid','YES',null), ('product_reviews','reviewer_name','text','NO',null),
+  ('product_reviews','rating','smallint','NO',null), ('product_reviews','title','text','YES',null),
+  ('product_reviews','review_text','text','NO',null), ('product_reviews','is_verified_buyer','boolean','NO','false'),
+  ('product_reviews','status','text','NO','pending'), ('product_reviews','helpful_count','integer','NO','0'),
+  ('product_reviews','unhelpful_count','integer','NO','0'), ('product_reviews','created_at','timestamp with time zone','NO','now()'),
+  ('product_reviews','updated_at','timestamp with time zone','NO','now()')
 )
 select '02_columns' as result_set, e.table_name, e.column_name, e.expected_type,
   c.data_type as actual_type, e.expected_nullable, c.is_nullable as actual_nullable,
@@ -114,7 +123,14 @@ with expected(function_name, identity_arguments) as (
   ('enforce_product_storefront_ready',''), ('enforce_offer_product_storefront_ready',''),
   ('save_product_with_offer','uuid, text, text, text, uuid, text, boolean, boolean, text, uuid, uuid, text, numeric, numeric, text, text, boolean'),
   ('delete_failed_product','uuid'), ('replace_product_images','uuid, jsonb'),
-  ('replace_product_offers','uuid, jsonb')
+  ('replace_product_offers','uuid, jsonb'),
+  ('create_product_with_images_and_offers','jsonb, jsonb, jsonb'),
+  ('permanently_delete_archived_product','uuid'),
+  ('require_product_image_before_publish',''),
+  ('save_product_workflow','uuid, jsonb, jsonb, jsonb'),
+  ('can_read_published_product_image_object','text'),
+  ('can_read_published_knowledge_asset','text, text'),
+  ('get_product_review_summary','uuid')
 ), actual as (
   select p.proname, oidvectortypes(p.proargtypes) as identity_arguments,
     p.prosecdef as security_definer
@@ -143,7 +159,9 @@ with expected(index_name) as (
   ('blog_tags_pkey'), ('blog_tags_slug_key'), ('blog_post_tags_pkey'), ('blog_post_tags_tag_id_idx'),
   ('knowledge_hub_items_pkey'), ('knowledge_hub_items_slug_key'), ('knowledge_hub_items_slug_idx'), ('knowledge_hub_items_status_idx'),
   ('knowledge_hub_items_category_idx'), ('knowledge_hub_items_published_at_idx'), ('product_images_pkey'),
-  ('product_images_product_order_idx'), ('product_images_one_primary_idx')
+  ('product_images_product_order_idx'), ('product_images_one_primary_idx'),
+  ('product_reviews_pkey'), ('product_reviews_product_id_idx'), ('product_reviews_status_idx'),
+  ('product_reviews_created_at_idx'), ('product_reviews_rating_idx'), ('product_reviews_public_page_idx')
 )
 select '04_indexes' as result_set, e.index_name, i.tablename, i.indexdef,
   case when i.indexname is null then 'MISSING' else 'OK' end as status
@@ -156,7 +174,8 @@ with expected(table_name, trigger_name) as (
   ('product_offers','product_offers_set_updated_at'), ('blog_categories','blog_categories_set_updated_at'),
   ('blog_posts','blog_posts_set_updated_at'), ('blog_tags','blog_tags_set_updated_at'),
   ('knowledge_hub_items','knowledge_hub_items_set_updated_at'),
-  ('products','products_storefront_ready'), ('product_offers','offers_keep_product_storefront_ready')
+  ('products','products_storefront_ready'), ('product_offers','offers_keep_product_storefront_ready'),
+  ('products','require_product_image_before_publish'), ('product_reviews','product_reviews_set_updated_at')
 )
 select '05_triggers' as result_set, e.table_name, e.trigger_name,
   case when t.trigger_name is null then 'MISSING' else 'OK' end as status
@@ -184,11 +203,15 @@ with expected(table_name, policy_name) as (
   ('blog_tags','Active admins can manage blog tags'), ('blog_post_tags','Active admins can manage blog post tags'),
   ('knowledge_hub_items','Public can read published knowledge hub items'),
   ('knowledge_hub_items','Active admins can manage knowledge hub items'),
-  ('product_images','Public can read published product images'), ('product_images','Active admins manage product images'),
+  ('product_images','Public can read complete published product images'), ('product_images','Active admins manage product images'),
   ('objects','Published knowledge hub assets are readable'), ('objects','Active admins can upload knowledge hub assets'),
   ('objects','Active admins can update knowledge hub assets'), ('objects','Active admins can delete knowledge hub assets'),
-  ('objects','Published product image files are readable'), ('objects','Active admins can upload product image files'),
-  ('objects','Active admins can delete product image files')
+  ('objects','Published product image objects are readable'), ('objects','Active admins can upload product image files'),
+  ('objects','Active admins can update product image files'), ('objects','Active admins can delete product image files'),
+  ('product_reviews','Public can read approved product reviews'),
+  ('product_reviews','Active admins can read all product reviews'),
+  ('product_reviews','Active admins can moderate product reviews'),
+  ('product_reviews','Active admins can delete product reviews')
 )
 select '06_policies' as result_set, e.table_name, e.policy_name, p.schemaname,
   p.cmd, p.roles, p.qual, p.with_check,
@@ -200,7 +223,7 @@ order by e.table_name, e.policy_name;
 with expected(table_name) as (
   values ('categories'), ('brands'), ('products'), ('merchants'), ('product_offers'),
   ('admin_users'), ('affiliate_clicks'), ('blog_categories'), ('blog_posts'), ('blog_tags'),
-  ('blog_post_tags'), ('knowledge_hub_items'), ('product_images')
+  ('blog_post_tags'), ('knowledge_hub_items'), ('product_images'), ('product_reviews')
 )
 select '07_rls' as result_set, e.table_name, c.relrowsecurity as rls_enabled,
   case when c.oid is null then 'TABLE_MISSING' when c.relrowsecurity then 'OK' else 'RLS_DISABLED' end as status
@@ -234,7 +257,9 @@ with expected(table_name, constraint_name, constraint_type) as (
   ('blog_posts','blog_posts_category_id_fkey','FOREIGN KEY'), ('blog_posts','blog_posts_status_allowed','CHECK'),
   ('blog_post_tags','blog_post_tags_post_id_fkey','FOREIGN KEY'), ('blog_post_tags','blog_post_tags_tag_id_fkey','FOREIGN KEY'),
   ('knowledge_hub_items','knowledge_hub_status_allowed','CHECK'),
-  ('product_images','product_images_product_id_fkey','FOREIGN KEY'), ('product_images','product_images_source_allowed','CHECK')
+  ('product_images','product_images_product_id_fkey','FOREIGN KEY'), ('product_images','product_images_source_allowed','CHECK'),
+  ('product_reviews','product_reviews_product_id_fkey','FOREIGN KEY'), ('product_reviews','product_reviews_user_id_fkey','FOREIGN KEY'),
+  ('product_reviews','product_reviews_rating_range','CHECK'), ('product_reviews','product_reviews_status_allowed','CHECK')
 )
 select '09_constraints' as result_set, e.table_name, e.constraint_name, e.constraint_type,
   tc.constraint_type as actual_type,
@@ -262,7 +287,7 @@ select '12_actual_public_schema' as result_set, table_name, column_name, data_ty
 from information_schema.columns
 where table_schema='public' and table_name in (
   'categories','brands','products','merchants','product_offers','admin_users','affiliate_clicks',
-  'blog_categories','blog_posts','blog_tags','blog_post_tags','knowledge_hub_items','product_images'
+  'blog_categories','blog_posts','blog_tags','blog_post_tags','knowledge_hub_items','product_images','product_reviews'
 )
 order by table_name, ordinal_position;
 -- Complete live catalog audit. Run as a database owner in the production SQL editor.
@@ -300,3 +325,23 @@ order by tablename, policyname;
 
 select auth.uid() as authenticated_user_id, au.user_id, au.role, au.is_active
 from public.admin_users au where au.user_id = (select auth.uid());
+
+-- Repository migration ledger required by the current application.
+with expected(version) as (values ('020'),('021'),('022'),('023'),('024'),('025'),('026'),('027'),('028'),('029'),('030'),('031'))
+select '13_required_migrations' as result_set, e.version,
+  case when m.version is null then 'MISSING' else 'OK' end as status
+from expected e
+left join supabase_migrations.schema_migrations m on m.version=e.version
+order by e.version;
+
+-- No repository feature currently requires a public view; list any production-only views for review.
+select '14_public_views' as result_set, table_name as view_name, view_definition
+from information_schema.views where table_schema='public' order by table_name;
+
+-- Referential/orphan checks. Every count must be zero.
+select '15_orphans' as result_set, 'product_images_without_product' as check_name, count(*) as orphan_count
+from public.product_images pi left join public.products p on p.id=pi.product_id where p.id is null
+union all select '15_orphans','product_offers_without_product',count(*)
+from public.product_offers po left join public.products p on p.id=po.product_id where p.id is null
+union all select '15_orphans','product_offers_without_merchant',count(*)
+from public.product_offers po left join public.merchants m on m.id=po.merchant_id where m.id is null;

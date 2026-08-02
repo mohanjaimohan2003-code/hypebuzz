@@ -96,7 +96,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps<"
           <div className="mt-8 flex flex-col items-end gap-6 lg:flex-row lg:items-start">
             <SearchFilters action={categoryHref} brands={result.brands} categories={[]} filters={filters} hideCategory merchants={result.merchants} resetHref={categoryHref} showEditorialFilters />
             <section aria-label={`${category.name} products`} className="min-w-0 flex-1">
-              {result.products.length ? <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-4">{result.products.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <CategoryEmptyState categoryHref={categoryHref} hasFilters={filtered} />}
+              {result.products.length ? <div className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{result.products.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <CategoryEmptyState categoryHref={categoryHref} hasFilters={filtered} />}
             </section>
           </div>
         </div>

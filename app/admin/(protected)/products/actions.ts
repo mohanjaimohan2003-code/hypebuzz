@@ -4,11 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, ProductImage, ProductStatus } from "@/lib/types/database";
-import { isOfferEligibleForPublication, publicationErrorMessages } from "@/lib/offers/publication-contract";
-import { cleanImportedReferenceDisplayName, normalizeReferenceName } from "@/lib/admin/product-import/match-record";
+import { publicationErrorMessages } from "@/lib/offers/publication-contract";
 import { createBrandSlug } from "@/lib/validation/brand";
-import { importedBrandProductionError } from "@/lib/admin/product-import/brand-error";
-import { assessAdminIdentity } from "@/lib/auth/admin-identity";
+import { matchingProductForCreate, nextAvailableProductSlug } from "@/lib/products/slug-conflict";
 import {
   isUuid,
   validateProductForm,
@@ -37,7 +35,6 @@ type ProductAuthContext = {
   supabase: ProductSupabaseClient;
   authenticated: boolean;
   userId: string | null;
-  requestRole: string | null;
   activeAdmin: boolean;
 };
 
@@ -45,7 +42,6 @@ async function inspectProductAuthContext(): Promise<ProductAuthContext> {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   let activeAdmin = false;
-  let adminRole: string | null = null;
 
   if (authError) logSupabaseError("authenticate product save request", authError);
 
@@ -58,41 +54,14 @@ async function inspectProductAuthContext(): Promise<ProductAuthContext> {
       .eq("is_active", true)
       .maybeSingle<{ user_id: string; role: string; is_active: boolean }>();
     activeAdmin = !adminError && Boolean(admin);
-    adminRole = admin?.role ?? null;
     if (adminError) logSupabaseError("verify product save active admin", adminError);
-  }
-
-  if (process.env.NODE_ENV === "development") {
-    console.info("Product save authentication", {
-      authenticatedUserFound: Boolean(user) && !authError,
-      authenticatedUserId: user?.id ?? null,
-      requestRole: user?.role ?? null,
-      adminRole,
-      activeAdmin,
-      authErrorCode: authError?.code ?? null,
-      authErrorMessage: authError?.message ?? null,
-    });
   }
 
   return {
     supabase,
     authenticated: Boolean(user) && !authError,
     userId: user?.id ?? null,
-    requestRole: user?.role ?? null,
     activeAdmin,
-  };
-}
-
-export async function diagnoseProductSaveAuthentication(): Promise<{
-  authenticated: boolean;
-  userIdPresent: boolean;
-  activeAdmin: boolean;
-}> {
-  const auth = await inspectProductAuthContext();
-  return {
-    authenticated: auth.authenticated,
-    userIdPresent: Boolean(auth.userId),
-    activeAdmin: auth.activeAdmin,
   };
 }
 
@@ -115,12 +84,6 @@ function logSupabaseError(step: string, error: SupabaseDatabaseError | null) {
 
 function exactDatabaseException(prefix: string, error: SupabaseDatabaseError | null) {
   return `${prefix}\nCode: ${error?.code ?? "unknown"}\nMessage: ${error?.message ?? "Unknown database error."}\nDetails: ${error?.details ?? "None"}\nHint: ${error?.hint ?? "None"}`;
-}
-
-function operationErrorMessage(step: string, error: SupabaseDatabaseError, productionMessage: string) {
-  logSupabaseError(step, error);
-  if (process.env.NODE_ENV !== "development") return productionMessage;
-  return `[${step}] ${error.code ?? "unknown"}: ${error.message ?? "Unknown Supabase error."}${error.details ? ` Details: ${error.details}` : ""}${error.hint ? ` Hint: ${error.hint}` : ""}`;
 }
 
 function extractDatabaseObject(
@@ -250,119 +213,6 @@ function revalidateProductRoutes() {
   revalidatePath("/products/[slug]", "page");
 }
 
-type ImportedBrandReference = { id: string; name: string; slug: string; isActive: boolean };
-export type ImportedBrandResolution =
-  | { status: "selected" | "created"; brand: ImportedBrandReference; message: string }
-  | { status: "selection_required"; brands: ImportedBrandReference[]; message: string }
-  | { status: "error"; message: string };
-
-function cleanImportedBrandName(value: string) {
-  return cleanImportedReferenceDisplayName(value).slice(0, 120);
-}
-
-async function resolveImportedBrandAtSave(supabase: ProductSupabaseClient, rawName: string) {
-  const name = cleanImportedBrandName(rawName);
-  const slug = createBrandSlug(name);
-  if (name.length < 2 || !slug) return { id: null, error: { code: "23502", message: "Imported brand name is invalid." } };
-  const existing = await supabase.from("brands").select("id, name, slug").returns<Array<{ id: string; name: string; slug: string }>>();
-  if (existing.error) return { id: null, error: existing.error };
-  const normalized = normalizeReferenceName(name);
-  const match = (existing.data ?? []).find((brand) => brand.slug === slug || normalizeReferenceName(brand.name) === normalized);
-  if (match) return { id: match.id, error: null };
-  const inserted = await supabase.from("brands").insert({ name, slug }).select("id").single<{ id: string }>();
-  if (!inserted.error) return { id: inserted.data.id, error: null };
-  if (inserted.error.code === "23505") {
-    const concurrent = await supabase.from("brands").select("id").eq("slug", slug).maybeSingle<{ id: string }>();
-    if (!concurrent.error && concurrent.data) return { id: concurrent.data.id, error: null };
-  }
-  return { id: null, error: inserted.error };
-}
-
-export async function resolveOrCreateImportedBrand(rawName: string): Promise<ImportedBrandResolution> {
-  // Use one request-scoped cookie-aware client for authentication, admin
-  // authorization, matching, and insertion. This prevents the write from
-  // drifting onto a separate client whose session has not been verified.
-  const supabase = await createClient();
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  console.info("Imported brand authentication", {
-    getUserReturnedUser: Boolean(user),
-    userId: user?.id ?? null,
-    authErrorCode: authError?.code ?? null,
-    authErrorMessage: authError?.message ?? null,
-  });
-  if (authError || !user) return { status: "error", message: assessAdminIdentity({ userId: user?.id ?? null, authFailed: Boolean(authError), admin: null, adminLookupFailed: false }).message };
-
-  const adminResult = await supabase.from("admin_users")
-    .select("user_id, role, is_active")
-    .eq("user_id", user.id)
-    .maybeSingle<{ user_id: string; role: string; is_active: boolean }>();
-  console.info("Imported brand admin authorization", {
-    userId: user.id,
-    adminRowFound: Boolean(adminResult.data),
-    adminRole: adminResult.data?.role ?? null,
-    adminIsActive: adminResult.data?.is_active ?? null,
-    lookupErrorCode: adminResult.error?.code ?? null,
-    lookupErrorMessage: adminResult.error?.message ?? null,
-  });
-  if (adminResult.error) {
-    logSupabaseError("verify imported brand admin", adminResult.error);
-    return { status: "error", message: assessAdminIdentity({ userId: user.id, authFailed: false, admin: null, adminLookupFailed: true }).message };
-  }
-  const identity = assessAdminIdentity({ userId: user.id, authFailed: false, admin: adminResult.data, adminLookupFailed: false });
-  if (!identity.allowed) return { status: "error", message: identity.message };
-
-  const name = cleanImportedBrandName(rawName);
-  const slug = createBrandSlug(name);
-  if (name.length < 2 || !slug) return { status: "error", message: "The imported brand name is not valid." };
-
-  async function findMatches() {
-    const result = await supabase.from("brands").select("id, name, slug, is_active").returns<Array<{ id: string; name: string; slug: string; is_active: boolean }>>();
-    if (result.error) return { error: result.error, matches: [] as ImportedBrandReference[] };
-    const normalized = normalizeReferenceName(name);
-    const matches = (result.data ?? []).filter((brand) => brand.slug.toLowerCase() === slug
-      || brand.name.toLowerCase() === name.toLowerCase()
-      || normalizeReferenceName(brand.name) === normalized)
-      .map((brand) => ({ id: brand.id, name: brand.name, slug: brand.slug, isActive: brand.is_active }));
-    return { error: null, matches: [...new Map(matches.map((brand) => [brand.id, brand])).values()] };
-  }
-
-  const existing = await findMatches();
-  if (existing.error) return { status: "error", message: operationErrorMessage("find imported brand", existing.error, "Brands could not be checked before import.") };
-  if (existing.matches.length === 1) return { status: "selected", brand: existing.matches[0], message: `Brand '${existing.matches[0].name}' was selected.` };
-  if (existing.matches.length > 1) return { status: "selection_required", brands: existing.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
-
-  // Use only the two required columns from migration 001. Production may not
-  // yet contain optional migration-009 fields such as description/website_url;
-  // is_active already defaults to true.
-  const inserted = await supabase.from("brands").insert({ name, slug })
-    .select("id, name, slug, is_active").single<{ id: string; name: string; slug: string; is_active: boolean }>();
-  if (inserted.error) {
-    console.error({
-      step: "insert imported brand",
-      code: inserted.error.code,
-      message: inserted.error.message,
-      details: inserted.error.details,
-      hint: inserted.error.hint,
-    });
-  }
-  if (!inserted.error && inserted.data) {
-    revalidatePath("/admin/brands", "layout");
-    return { status: "created", brand: { id: inserted.data.id, name: inserted.data.name, slug: inserted.data.slug, isActive: inserted.data.is_active }, message: `Brand '${inserted.data.name}' was created and selected. You can add its logo later.` };
-  }
-  if (inserted.error?.code === "23505") {
-    const concurrent = await findMatches();
-    if (!concurrent.error && concurrent.matches.length === 1) return { status: "selected", brand: concurrent.matches[0], message: `Brand '${concurrent.matches[0].name}' already exists and has been selected.` };
-    if (!concurrent.error && concurrent.matches.length > 1) return { status: "selection_required", brands: concurrent.matches, message: `Brand '${name}' matched multiple records. Select the correct brand.` };
-  }
-  if (process.env.NODE_ENV === "development") {
-    return {
-      status: "error",
-      message: `[insert imported brand] ${inserted.error?.code ?? "unknown"}: ${inserted.error?.message ?? "Supabase returned no inserted brand."}${inserted.error?.details ? ` Details: ${inserted.error.details}` : ""}${inserted.error?.hint ? ` Hint: ${inserted.error.hint}` : ""}`,
-    };
-  }
-  return { status: "error", message: importedBrandProductionError(inserted.error, name) };
-}
-
 async function categoryExists(supabase: ProductSupabaseClient, categoryId: string): Promise<{
   exists: boolean;
   active: boolean;
@@ -376,62 +226,6 @@ async function categoryExists(supabase: ProductSupabaseClient, categoryId: strin
 
   if (error) return { exists: false, active: false, error };
   return { exists: Boolean(data), active: data?.is_active === true };
-}
-
-async function saveProductWithOffer(supabase: ProductSupabaseClient, userId: string, productId: string | null, values: ProductFormValues, formData: FormData, primaryImageUrl: string | null = null) {
-  const offerIdValue = String(formData.get("offerId") ?? "").trim();
-  const primaryOffer = values.offers.find((offer) => isOfferEligibleForPublication({
-    affiliateUrl: offer.affiliateUrl,
-    currentPrice: offer.currentPrice,
-    originalPrice: offer.originalPrice,
-    currency: offer.currency,
-    availability: offer.stockStatus,
-    isActive: offer.isActive,
-    // Active merchant IDs are re-read by validateProductOfferMerchants.
-    merchantIsActive: true,
-  })) ?? values.offers[0];
-  const offerId = primaryOffer?.persisted === true && isUuid(primaryOffer.id) ? primaryOffer.id : (isUuid(offerIdValue) ? offerIdValue : null);
-  const hasOffer = Boolean(primaryOffer);
-  const productPayloadKeys = ["name", "slug", "short_description", "category_id", "primary_image_url", "is_featured", "is_trending", "status"];
-  console.info("Product insert diagnostic", {
-    authenticatedUserId: userId,
-    expectedAdminUserId: "52cef260-f9db-4f9b-b970-08761a0aaae5",
-    authenticatedUserMatchesExpectedAdmin: userId === "52cef260-f9db-4f9b-b970-08761a0aaae5",
-    payloadColumnNames: productPayloadKeys,
-    slug: values.slug,
-    category_id: values.categoryId,
-    brand_id: values.brandId,
-    status: values.status,
-  });
-  const result = await supabase.rpc("save_product_with_offer", {
-    p_product_id: productId,
-    p_name: values.name,
-    p_slug: values.slug,
-    p_short_description: values.shortDescription || null,
-    p_category_id: values.categoryId,
-    p_primary_image_url: primaryImageUrl,
-    p_is_featured: values.isFeatured,
-    p_is_trending: values.isTrending,
-    p_status: values.status,
-    p_offer_id: hasOffer ? offerId : null,
-    p_merchant_id: hasOffer ? primaryOffer.merchantId : null,
-    p_affiliate_url: hasOffer ? primaryOffer.affiliateUrl : null,
-    p_current_price: hasOffer ? primaryOffer.currentPrice : null,
-    p_original_price: hasOffer ? primaryOffer.originalPrice : null,
-    p_currency: hasOffer ? primaryOffer.currency : null,
-    p_availability: hasOffer ? primaryOffer.stockStatus : null,
-    p_offer_is_active: hasOffer ? primaryOffer.isActive : null,
-  });
-  if (result.error) {
-    console.error("Product insert failed", {
-      payloadColumnNames: productPayloadKeys,
-      code: result.error.code,
-      message: result.error.message,
-      details: result.error.details,
-      hint: result.error.hint,
-    });
-  }
-  return result;
 }
 
 async function validateBrandReference(supabase: ProductSupabaseClient, brandId: string) {
@@ -459,19 +253,15 @@ function duplicateProductState(product: ExistingProductSlug): ProductActionState
 async function resolveCreateSlug(supabase: ProductSupabaseClient, requestedSlug: string, productName: string) {
   const exact = await findProductBySlug(supabase, requestedSlug);
   if (exact.error) return { slug: null, duplicate: null, error: exact.error };
-  if (exact.data && normalizeReferenceName(exact.data.name) === normalizeReferenceName(productName)) {
+  if (exact.data && matchingProductForCreate(productName, [exact.data])) {
     return { slug: null, duplicate: exact.data, error: null };
   }
   const candidates = await supabase.from("products").select("id, name, slug, status").like("slug", `${requestedSlug}-%`)
     .returns<ExistingProductSlug[]>();
   if (candidates.error) return { slug: null, duplicate: null, error: candidates.error };
-  const matchingProduct = (candidates.data ?? []).find((product) => normalizeReferenceName(product.name) === normalizeReferenceName(productName));
+  const matchingProduct = matchingProductForCreate(productName, candidates.data ?? []);
   if (matchingProduct) return { slug: null, duplicate: matchingProduct, error: null };
-  if (!exact.data) return { slug: requestedSlug, duplicate: null, error: null };
-  const occupied = new Set((candidates.data ?? []).map((product) => product.slug));
-  let suffix = 2;
-  while (occupied.has(`${requestedSlug}-${suffix}`)) suffix += 1;
-  return { slug: `${requestedSlug}-${suffix}`, duplicate: null, error: null };
+  return { slug: nextAvailableProductSlug(requestedSlug, [exact.data?.slug, ...(candidates.data ?? []).map((product) => product.slug)].filter(Boolean) as string[]), duplicate: null, error: null };
 }
 
 async function validateProductOfferMerchants(supabase: ProductSupabaseClient, values: ProductFormValues) {
@@ -485,17 +275,6 @@ async function validateProductOfferMerchants(supabase: ProductSupabaseClient, va
     valid: !result.error && (result.data ?? []).length === activeMerchantIds.length,
     error: result.error,
   };
-}
-
-async function saveProductDetails(supabase: ProductSupabaseClient, productId: string, values: ProductFormValues) {
-  const supportedPayload: Record<string, string | Json> = {
-    brand_id: values.brandId,
-    specifications: values.specifications as Json,
-  };
-  if (values.longDescription) supportedPayload.description = values.longDescription;
-  const result = await supabase.from("products").update(supportedPayload).eq("id", productId).select("id").maybeSingle();
-  if (result.error) logSupabaseError("update supported product details", result.error);
-  return result;
 }
 
 const IMAGE_BUCKET = "product-images";
@@ -562,27 +341,14 @@ async function stageNewProductImages(supabase:ProductSupabaseClient, productName
   return {stage:{rows,uploadedPaths,submissionId},error:null};
 }
 
-async function syncProductImages(supabase:ProductSupabaseClient, productId:string, productName:string, values:ProductFormValues, formData:FormData) {
+type UpdateImageStage = ImageStage & { removedPaths: string[] };
+async function stageUpdatedProductImages(supabase:ProductSupabaseClient, productId:string, productName:string, values:ProductFormValues, formData:FormData):Promise<{stage:UpdateImageStage|null;error:string|null}> {
   const submissionId=crypto.randomUUID();
   const files=formData.getAll("uploadedImages").filter((x):x is File=>x instanceof File&&x.size>0); const existingResult=await supabase.from("product_images").select("*").eq("product_id",productId).returns<ProductImage[]>();
-  if(existingResult.error) return imageFailure("select product_images before replacement",existingResult.error,{submissionId,productId}); const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
-  for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("validate existing product image",{code:"IMAGE_ROW_MISSING",message:"An existing image is no longer available. Refresh and try again."},{submissionId,productId});}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];if(!(file instanceof File)||file.size<=0)return imageFailure("validate uploaded image state",{code:"IMAGE_STATE_LOST",message:"Uploaded image state was lost. Select the file again."},{submissionId,productId});const ext=await imageExtension(file);if(!ext){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("validate uploaded image bytes",{code:"IMAGE_TYPE_INVALID",message:"Only genuine JPG, PNG, or WebP images are allowed."},{submissionId,productId});}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("upload image to product-images storage",result.error,{submissionId,bucket:IMAGE_BUCKET,objectPath:path,productId});}uploaded.push(result.data.path);rows.push({id,image_url:`/product-images/${id}`,storage_path:result.data.path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
-  const replaced=await supabase.rpc("replace_product_images",{p_product_id:productId,p_images:rows as unknown as Json});if(replaced.error){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return imageFailure("insert product_images via replace_product_images",replaced.error,{submissionId,productId});}const retained=new Set(rows.map(x=>x.id));const removed=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);if(removed.length)await cleanupUploadedImages(supabase,removed,submissionId,productId);return null;
-}
-
-async function syncProductOffers(supabase: ProductSupabaseClient, productId: string, values: ProductFormValues) {
-  const activeMerchantIds = [...new Set(values.offers.filter((offer) => offer.isActive).map((offer) => offer.merchantId))];
-  if (activeMerchantIds.length) {
-    const result = await supabase.from("merchants").select("id").in("id", activeMerchantIds).eq("is_active", true).returns<Array<{ id: string }>>();
-    if (result.error || (result.data ?? []).length !== activeMerchantIds.length) return "Active offers must use active merchants.";
-  }
-  const rows = productOfferRows(values);
-  const result = await supabase.rpc("replace_product_offers", { p_product_id: productId, p_offers: rows as unknown as Json });
-  if (result.error) {
-    return operationErrorMessage("insert product_offers via replace_product_offers", result.error,
-      result.error.code === "23505" ? "Only one active offer per merchant is allowed." : "Product offers could not be saved. Please try again.");
-  }
-  return null;
+  if(existingResult.error) return {stage:null,error:imageFailure("select product_images before replacement",existingResult.error,{submissionId,productId})}; const existing=new Map((existingResult.data??[]).map(x=>[x.id,x])); const rows:SavedImage[]=[]; const uploaded:string[]=[];
+  for(let index=0;index<values.imageManifest.length;index++){const item=values.imageManifest[index]; if(item.kind==="existing"){const found=existing.get(item.id!);if(!found){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return {stage:null,error:imageFailure("validate existing product image",{code:"IMAGE_ROW_MISSING",message:"An existing image is no longer available. Refresh and try again."},{submissionId,productId})};}rows.push({id:found.id,image_url:found.image_url,storage_path:found.storage_path,source_type:found.source_type,alt_text:found.alt_text??`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const id=crypto.randomUUID();if(item.kind==="external"){rows.push({id,image_url:item.url!,storage_path:null,source_type:"external",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});continue;} const file=files[item.fileIndex!];if(!(file instanceof File)||file.size<=0){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return {stage:null,error:imageFailure("validate uploaded image state",{code:"IMAGE_STATE_LOST",message:"Uploaded image state was lost. Select the file again."},{submissionId,productId})};}const ext=await imageExtension(file);if(!ext){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return {stage:null,error:imageFailure("validate uploaded image bytes",{code:"IMAGE_TYPE_INVALID",message:"Only genuine JPG, PNG, or WebP images are allowed."},{submissionId,productId})};}const path=`products/${productId}/${crypto.randomUUID()}-${safeFileName(file.name)}.${ext}`;const result=await supabase.storage.from(IMAGE_BUCKET).upload(path,file,{contentType:ext==="jpg"?"image/jpeg":`image/${ext}`,upsert:false});if(result.error){await cleanupUploadedImages(supabase,uploaded,submissionId,productId);return {stage:null,error:imageFailure("upload image to product-images storage",result.error,{submissionId,bucket:IMAGE_BUCKET,objectPath:path,productId})};}uploaded.push(result.data.path);rows.push({id,image_url:`/product-images/${id}`,storage_path:result.data.path,source_type:"upload",alt_text:`${productName} product image ${index+1}`,sort_order:index,is_primary:item.isPrimary});}
+  const retained=new Set(rows.map(x=>x.id));const removedPaths=(existingResult.data??[]).filter(x=>!retained.has(x.id)&&x.storage_path).map(x=>x.storage_path!);
+  return {stage:{rows,uploadedPaths:uploaded,submissionId,removedPaths},error:null};
 }
 
 function productOfferRows(values:ProductFormValues) {
@@ -600,6 +366,32 @@ function productOfferRows(values:ProductFormValues) {
     offer_title: offer.offerTitle,
     last_checked_at: offer.lastCheckedAt ? new Date(offer.lastCheckedAt).toISOString() : null,
   }));
+}
+
+function workflowProductPayload(values: ProductFormValues, primaryImageUrl: string, importedBrandName = "") {
+  return {
+    name: values.name,
+    slug: values.slug,
+    short_description: values.shortDescription || null,
+    description: values.longDescription || null,
+    category_id: values.categoryId,
+    brand_id: values.brandId || null,
+    imported_brand_name: importedBrandName || null,
+    imported_brand_slug: importedBrandName ? createBrandSlug(importedBrandName) : null,
+    primary_image_url: primaryImageUrl,
+    specifications: values.specifications as Json,
+    highlights: values.highlights as Json,
+    seo_title: values.seoTitle || null,
+    seo_description: values.seoDescription || null,
+    is_featured: values.isFeatured,
+    is_trending: values.isTrending,
+    status: values.status,
+  };
+}
+
+function isProductSlugConflict(error: SupabaseDatabaseError | null) {
+  return error?.code === "23505" && [error.message, error.details, error.hint]
+    .filter(Boolean).join(" ").includes("products_slug_key");
 }
 
 function inactivePublishedCategoryError(): ProductActionState {
@@ -623,11 +415,6 @@ export async function createProduct(
   if (!validation.success) return validation.state;
 
   const importedBrandName = String(formData.get("importedBrandName") ?? "").trim();
-  if (!validation.data.brandId && importedBrandName) {
-    const resolvedBrand = await resolveImportedBrandAtSave(supabase, importedBrandName);
-    if (resolvedBrand.error || !resolvedBrand.id) return databaseError(resolvedBrand.error, "resolve or create brand during product save");
-    validation.data.brandId = resolvedBrand.id;
-  }
 
   const category = await categoryExists(supabase, validation.data.categoryId);
   if (category.error) return databaseError(category.error, "insert");
@@ -659,25 +446,35 @@ export async function createProduct(
   const primaryImage=imageStage.rows.find(image=>image.is_primary);
   if(!primaryImage){await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);return {status:"error",message:"Choose exactly one primary image.",fieldErrors:{imageUrl:"Choose exactly one primary image."}};}
   const productPayloadKeys = ["name", "slug", "short_description", "category_id", "primary_image_url", "is_featured", "is_trending", "status"];
-  const productResult=await supabase.rpc("create_product_with_images_and_offers",{
-    p_product:{
-      name:validation.data.name,slug:validation.data.slug,short_description:validation.data.shortDescription||null,
-      description:validation.data.longDescription||null,category_id:validation.data.categoryId,brand_id:validation.data.brandId||null,
-      primary_image_url:primaryImage.image_url,specifications:validation.data.specifications as Json,
-      highlights:validation.data.highlights as Json,seo_title:validation.data.seoTitle||null,seo_description:validation.data.seoDescription||null,
-      is_featured:validation.data.isFeatured,is_trending:validation.data.isTrending,status:validation.data.status,
-    } as Json,
+  let productResult = await supabase.rpc("save_product_workflow",{
+    p_product_id:null,
+    p_product:workflowProductPayload(validation.data,primaryImage.image_url,importedBrandName) as Json,
     p_images:imageStage.rows as unknown as Json,
     p_offers:productOfferRows(validation.data) as unknown as Json,
   });
-  const data=productResult.data??null;
-  const error=productResult.error;
-  if (error?.code === "23505") {
-    await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);
+  if (isProductSlugConflict(productResult.error)) {
     const concurrent = await findProductBySlug(supabase, validation.data.slug);
-    if (!concurrent.error && concurrent.data && normalizeReferenceName(concurrent.data.name) === normalizeReferenceName(validation.data.name)) {
+    if (!concurrent.error && concurrent.data && matchingProductForCreate(validation.data.name, [concurrent.data])) {
+      await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);
       return duplicateProductState(concurrent.data);
     }
+    const retrySlug = await resolveCreateSlug(supabase, validation.data.slug, validation.data.name);
+    if (!retrySlug.error && !retrySlug.duplicate && retrySlug.slug && retrySlug.slug !== validation.data.slug) {
+      validation.data.slug = retrySlug.slug;
+      productResult = await supabase.rpc("save_product_workflow",{
+        p_product_id:null,
+        p_product:workflowProductPayload(validation.data,primaryImage.image_url,importedBrandName) as Json,
+        p_images:imageStage.rows as unknown as Json,
+        p_offers:productOfferRows(validation.data) as unknown as Json,
+      });
+    }
+  }
+  const data=productResult.data??null;
+  const error=productResult.error;
+  if (isProductSlugConflict(error)) {
+    await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);
+    const concurrent = await findProductBySlug(supabase, validation.data.slug);
+    if (!concurrent.error && concurrent.data) return duplicateProductState(concurrent.data);
   }
   if (error) {await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);return productInsertError(error, productPayloadKeys);}
   if (!data) {await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,null);return { status:"error",message:"Product insert failed\nPostgreSQL code: unknown\nMessage: Supabase returned no product ID.\nDetails: None\nHint: None\nPayload keys: " + productPayloadKeys.join(", "),fieldErrors:{} };}
@@ -722,19 +519,28 @@ export async function updateProduct(
   if (brand.error) return databaseError(brand.error, "update");
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
 
-  const current=await supabase.from("products").select("primary_image_url").eq("id",productId).maybeSingle<{primary_image_url:string|null}>();
-  const { data, error } = await saveProductWithOffer(supabase, auth.userId!, productId, validation.data, formData, current.data?.primary_image_url??null);
-
-  if (error) return databaseError(error, "update products via save_product_with_offer");
-  if (!data) {
-    return { status: "error", message: "The product could not be found.", fieldErrors: {} };
+  const imagePreparation=await stageUpdatedProductImages(supabase,productId,validation.data.name,validation.data,formData);
+  if(imagePreparation.error||!imagePreparation.stage)return {status:"error",message:imagePreparation.error??"Product images could not be prepared.",fieldErrors:{imageUrl:imagePreparation.error??"Product images could not be prepared."}};
+  const imageStage=imagePreparation.stage;
+  const primaryImage=imageStage.rows.find((image)=>image.is_primary);
+  if(!primaryImage){await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,productId);return {status:"error",message:"Choose exactly one primary image.",fieldErrors:{imageUrl:"Choose exactly one primary image."}};}
+  const {data,error}=await supabase.rpc("save_product_workflow",{
+    p_product_id:productId,
+    p_product:workflowProductPayload(validation.data,primaryImage.image_url) as Json,
+    p_images:imageStage.rows as unknown as Json,
+    p_offers:productOfferRows(validation.data) as unknown as Json,
+  });
+  if(error){
+    await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,productId);
+    if(isProductSlugConflict(error)){
+      const existing=await findProductBySlug(supabase,validation.data.slug);
+      if(!existing.error&&existing.data&&existing.data.id!==productId)return duplicateProductState(existing.data);
+    }
+    return databaseError(error,"update product workflow atomically");
   }
-  const brandResult = await saveProductDetails(supabase, productId, validation.data);
-  if (brandResult.error || !brandResult.data) return databaseError(brandResult.error, "update products rich fields (description, highlights, specifications, SEO)");
-  const imageError=await syncProductImages(supabase,productId,validation.data.name,validation.data,formData);
-  if(imageError)return {status:"error",message:imageError,fieldErrors:{imageUrl:imageError}};
-  const offerError = await syncProductOffers(supabase, productId, validation.data);
-  if (offerError) return { status: "error", message: offerError, fieldErrors: { offerList: offerError } };
+  if(!data){await cleanupUploadedImages(supabase,imageStage.uploadedPaths,imageStage.submissionId,productId);return {status:"error",message:"The product could not be found.",fieldErrors:{}};}
+  const cleanupWarning=await cleanupUploadedImages(supabase,imageStage.removedPaths,imageStage.submissionId,productId);
+  if(cleanupWarning) console.warn("Product update committed with obsolete image cleanup pending",{productId,submissionId:imageStage.submissionId});
 
   revalidateProductRoutes();
   redirect("/admin/products?notice=updated");
