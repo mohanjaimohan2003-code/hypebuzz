@@ -1,7 +1,8 @@
 export const siteName = "HypeBuzz";
-export const siteTitle = "Buy Smarter. Every Time. | HypeBuzz";
+export const siteTitle = "HypeBuzz | Discover Products, Compare Prices & Find Deals";
 export const siteDescription =
-  "Discover trending products, explore genuine deals, and make smarter shopping decisions with HypeBuzz.";
+  "Discover trending products, compare prices from trusted merchants, and find genuine deals with clear information that helps you shop smarter.";
+export const siteSocialImagePath = "/brand/hypebuzz-banner-v3.png";
 
 export const productionSiteOrigin = "https://hypebuzzshop.in";
 

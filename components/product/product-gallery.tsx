@@ -35,7 +35,7 @@ export function normalizeGalleryImages(images: GalleryImage[], imageUrl: string 
     const url = image.imageUrl?.trim();
     if (!url || !validImageUrl(url) || seen.has(url)) return [];
     seen.add(url);
-    return [{ ...image, imageUrl: url, altText: image.altText?.trim() || `${productName} product image ${index + 1}` }];
+    return [{ ...image, imageUrl: url, altText: image.altText?.trim() || (index === 0 ? productName : `${productName} — alternate view ${index + 1}`) }];
   });
   return normalized.length ? normalized : [{ id: "fallback", imageUrl: fallbackImage, altText: productName }];
 }

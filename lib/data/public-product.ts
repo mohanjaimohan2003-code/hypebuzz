@@ -131,6 +131,12 @@ function isInStock(availability: string | null) {
   return normalized.includes("in stock") || normalized === "available";
 }
 
+function meaningfulImageAlt(altText: string | null, productName: string, index: number) {
+  const value = altText?.trim();
+  if (value && !/^(?:product )?image(?: \d+)?$/i.test(value)) return value;
+  return index === 0 ? productName : `${productName} — alternate view ${index + 1}`;
+}
+
 export const getPublicProduct = cache(async (slug: string): Promise<PublicProductDetail | null> => {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -233,7 +239,7 @@ export const getPublicProduct = cache(async (slug: string): Promise<PublicProduc
     seoTitle: product.seo_title,
     seoDescription: product.seo_description,
     imageUrl: product.primary_image_url,
-    images: imageResult.error ? (product.primary_image_url ? [{id:"primary",imageUrl:product.primary_image_url,altText:product.name}]:[]) : (imageResult.data??[]).map(image=>({id:image.id,imageUrl:image.image_url,altText:image.alt_text})),
+    images: imageResult.error ? (product.primary_image_url ? [{id:"primary",imageUrl:product.primary_image_url,altText:product.name}]:[]) : (imageResult.data??[]).map((image, index)=>({id:image.id,imageUrl:image.image_url,altText:meaningfulImageAlt(image.alt_text, product.name, index)})),
     specifications: content.specifications,
     features: content.features,
     brand: product.brand,

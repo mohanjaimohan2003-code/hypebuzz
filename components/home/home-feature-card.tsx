@@ -8,12 +8,12 @@ const accentStyles: Record<HomeFeatureAccent, { icon: string; glow: string; link
   green: { icon: "border-[#22C55E]/35", glow: "bg-[#22C55E]/15", link: "text-[#86EFAC] hover:text-[#BBF7D0]" },
   purple: { icon: "border-[#A855F7]/35", glow: "bg-[#A855F7]/15", link: "text-[#D8B4FE] hover:text-[#E9D5FF]" },
 };
-const featureImages: Record<HomeFeatureIcon, { alt: string; src: string }> = {
-  flame: { alt: "Orange gift box", src: "/home/hot-deal.png" },
-  "trending-down": { alt: "Green price drop arrow", src: "/home/price-drop.png" },
-  search: { alt: "Purple trending products magnifier", src: "/home/trending-products.png" },
+const featureImages: Record<HomeFeatureIcon, { src: string }> = {
+  flame: { src: "/home/hot-deal.png" },
+  "trending-down": { src: "/home/price-drop.png" },
+  search: { src: "/home/trending-products.png" },
 };
-function FeatureIcon({ icon }: { icon: HomeFeatureIcon }) { const image = featureImages[icon]; return <Image alt={image.alt} className="h-full w-full object-cover" height={80} src={image.src} width={80}/>; }
+function FeatureIcon({ icon }: { icon: HomeFeatureIcon }) { const image = featureImages[icon]; return <Image alt="" className="h-full w-full object-cover" height={80} src={image.src} width={80}/>; }
 function ArrowIcon() { return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg>; }
 
 export function HomeFeatureCard({ title, description, actionLabel, href, icon, accent }: Props) {

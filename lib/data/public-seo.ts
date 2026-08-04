@@ -2,16 +2,25 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 
-export type SitemapProduct = { slug: string; updatedAt: string };
+export type SitemapProduct = { slug: string; updatedAt: string; imageUrl: string };
 export type SitemapCategory = { slug: string; updatedAt: string };
 export type SitemapGuide = { slug: string; updatedAt: string };
-type SitemapProductRow = { slug: string; updated_at: string };
+type SitemapProductRow = { slug: string; updated_at: string; primary_image_url?: string | null };
+
+function crawlableImageUrl(value: string | null | undefined) {
+  if (!value?.trim()) return null;
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch { return null; }
+}
 
 export async function getPublishedProductsForSitemap(): Promise<SitemapProduct[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("products")
-    .select("slug, updated_at")
+    .select("slug, updated_at, primary_image_url")
     .eq("status", "published")
     .not("primary_image_url", "is", null)
     .neq("primary_image_url", "")
@@ -19,7 +28,10 @@ export async function getPublishedProductsForSitemap(): Promise<SitemapProduct[]
     .returns<SitemapProductRow[]>();
 
   if (error) return [];
-  return (data ?? []).map((product) => ({ slug: product.slug, updatedAt: product.updated_at }));
+  return (data ?? []).flatMap((product) => {
+    const imageUrl = crawlableImageUrl(product.primary_image_url);
+    return imageUrl ? [{ slug: product.slug, updatedAt: product.updated_at, imageUrl }] : [];
+  });
 }
 
 export async function getPublishedGuidesForSitemap(): Promise<SitemapGuide[]> {
