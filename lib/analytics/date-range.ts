@@ -20,6 +20,12 @@ export type AnalyticsRangeQuery = {
   to?: string | string[];
 };
 
+export const analyticsSectionKeys = ["trend", "categories", "devices", "products", "merchants", "sources", "recent", "insights"] as const;
+export type AnalyticsSectionKey = (typeof analyticsSectionKeys)[number];
+export type AnalyticsSectionRanges = Record<AnalyticsSectionKey, AnalyticsDateRange>;
+export type AnalyticsSectionOverrides = Partial<Record<AnalyticsSectionKey, AnalyticsDateRange>>;
+export type AnalyticsSearchQuery = AnalyticsRangeQuery & Record<string, string | string[] | undefined>;
+
 const indiaOffset = "+05:30";
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const presetDays: Partial<Record<AnalyticsPreset, number>> = { "1d": 1, "3d": 3, "7d": 7, "10d": 10, "30d": 30 };
@@ -113,4 +119,28 @@ export function parseAnalyticsDateRange(query: AnalyticsRangeQuery, now = new Da
     calendarDays: days,
     granularity: days <= 2 ? "hour" : "day",
   };
+}
+
+export function parseAnalyticsSectionRanges(query: AnalyticsSearchQuery, globalRange: AnalyticsDateRange, now = new Date()) {
+  const ranges = {} as AnalyticsSectionRanges;
+  const overrides: AnalyticsSectionOverrides = {};
+  for (const key of analyticsSectionKeys) {
+    const rangeKey = `${key}Range`;
+    const fromKey = `${key}From`;
+    const toKey = `${key}To`;
+    const requested = one(query[rangeKey]);
+    const hasCustomDates = Boolean(query[fromKey] || query[toKey]);
+    if (!requested && !hasCustomDates) {
+      ranges[key] = globalRange;
+      continue;
+    }
+    const local = parseAnalyticsDateRange({
+      range: requested ?? "custom",
+      from: query[fromKey],
+      to: query[toKey],
+    }, now);
+    ranges[key] = local;
+    overrides[key] = local;
+  }
+  return { ranges, overrides };
 }

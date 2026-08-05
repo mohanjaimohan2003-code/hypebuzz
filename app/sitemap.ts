@@ -34,6 +34,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })),
     ...products.map((product) => ({
       url: absoluteUrl(`/products/${product.slug}`),
+      images: [new URL(product.imageUrl, absoluteUrl("/")).toString()],
       lastModified: new Date(product.updatedAt),
       changeFrequency: "daily" as const,
       priority: 0.9,

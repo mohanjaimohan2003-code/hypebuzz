@@ -4,6 +4,7 @@ import {
   getSiteUrl,
   siteDescription,
   siteName,
+  siteSocialImagePath,
   siteTitle,
 } from "@/lib/seo/site";
 import "./globals.css";
@@ -44,7 +45,7 @@ export const metadata: Metadata = {
     url: absoluteUrl("/"),
     images: [
       {
-        url: absoluteUrl("/brand/hypebuzz-banner-v3.png"),
+        url: absoluteUrl(siteSocialImagePath),
         alt: "HypeBuzz product discovery and price comparison platform",
       },
     ],
@@ -54,7 +55,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteTitle,
     description: siteDescription,
-    images: [absoluteUrl("/brand/hypebuzz-banner-v3.png")],
+    images: [absoluteUrl(siteSocialImagePath)],
   },
 };
 

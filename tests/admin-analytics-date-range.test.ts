@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { parseAnalyticsDateRange } from "../lib/analytics/date-range";
+import { parseAnalyticsDateRange, parseAnalyticsSectionRanges } from "../lib/analytics/date-range";
 import { buildAnalyticsInsights } from "../lib/analytics/insights";
 import type { AdminAnalyticsData } from "../lib/data/admin-analytics";
 
@@ -51,16 +51,36 @@ test("invalid custom ranges return a safe empty interval and validation message"
   }
 });
 
-test("every analytics section receives the same normalized bounds", () => {
+test("analytics queries use normalized server-side bounds", () => {
   const data = readFileSync("lib/data/admin-analytics.ts", "utf8");
   assert.match(data, /get_admin_analytics_dashboard[\s\S]*p_start_at: range\.start, p_end_at: range\.end/);
   assert.match(data, /p_previous_start_at: range\.comparisonStart, p_previous_end_at: range\.comparisonEnd/);
-  assert.match(data, /gte\("clicked_at", range\.start\)/);
-  assert.match(data, /lt\("clicked_at", range\.end\)/);
+  assert.match(data, /gte\("clicked_at", recentRange\.start\)/);
+  assert.match(data, /lt\("clicked_at", recentRange\.end\)/);
   const filter = readFileSync("components/admin/analytics-period-filter.tsx", "utf8");
   assert.equal((filter.match(/<form/g) ?? []).length, 1);
   const dashboard = readFileSync("components/admin/analytics-dashboard.tsx", "utf8");
-  assert.doesNotMatch(dashboard, /<form/);
+  assert.doesNotMatch(dashboard, /fetch\(/);
+});
+
+test("local section ranges override only their section and support custom dates", () => {
+  const global = parseAnalyticsDateRange({ range: "30d" }, now);
+  const { ranges, overrides } = parseAnalyticsSectionRanges({
+    range: "30d", productsRange: "7d", categoriesRange: "10d", devicesRange: "custom", devicesFrom: "2026-08-01", devicesTo: "2026-08-03",
+  }, global, now);
+  assert.equal(ranges.products.preset, "7d");
+  assert.equal(ranges.categories.preset, "10d");
+  assert.equal(ranges.devices.start, "2026-08-01T00:00:00+05:30");
+  assert.equal(ranges.devices.end, "2026-08-04T00:00:00+05:30");
+  assert.equal(ranges.merchants, global);
+  assert.equal(overrides.merchants, undefined);
+});
+
+test("invalid local custom dates are safe empty ranges", () => {
+  const global = parseAnalyticsDateRange({ range: "30d" }, now);
+  const { ranges } = parseAnalyticsSectionRanges({ productsRange: "custom", productsFrom: "2026-08-05", productsTo: "2026-08-01" }, global, now);
+  assert.ok(ranges.products.error);
+  assert.equal(ranges.products.start, ranges.products.end);
 });
 
 test("full dashboard migration remains admin-only and aggregates supported dimensions", () => {

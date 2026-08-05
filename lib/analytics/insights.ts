@@ -2,7 +2,8 @@ import type { AdminAnalyticsData } from "@/lib/data/admin-analytics";
 
 export type AnalyticsInsight = { title: string; description: string; tone: "blue" | "green" | "amber" };
 
-export function buildAnalyticsInsights(data: AdminAnalyticsData): AnalyticsInsight[] {
+export function buildAnalyticsInsights(data: AdminAnalyticsData, basis = data.insightBasis): AnalyticsInsight[] {
+  data = basis ? { ...data, ...basis } : data;
   if (!data.totalClicks) return [];
   const insights: AnalyticsInsight[] = [];
   const category = data.topCategories[0];

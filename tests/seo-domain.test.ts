@@ -55,3 +55,35 @@ test("dynamic public routes retain route-specific metadata and structured data",
   assert.match(article, /absoluteUrl\(`\/knowledge-hub\/\$\{guide\.slug\}`\)/);
   assert.match(articleSchema, /"@type": "Article"/);
 });
+
+test("homepage artwork is decorative and excluded from SEO surfaces", () => {
+  const featureCards = readFileSync("components/home/home-feature-card.tsx", "utf8");
+  const homepage = readFileSync("app/page.tsx", "utf8");
+  const sitemap = readFileSync("app/sitemap.ts", "utf8");
+  const nextConfig = readFileSync("next.config.ts", "utf8");
+  const decorativeAssets = ["hot-deal.png", "price-drop.png", "trending-products.png", "hypebuzz-hero-background.png"];
+
+  for (const attribute of ['alt=""', 'aria-hidden="true"', 'role="presentation"', 'loading="lazy"', 'decoding="async"', 'fetchPriority="low"']) {
+    assert.match(featureCards, new RegExp(attribute), `feature artwork ${attribute}`);
+    assert.match(homepage, new RegExp(attribute), `hero background ${attribute}`);
+  }
+  for (const asset of decorativeAssets) {
+    assert.doesNotMatch(sitemap, new RegExp(asset));
+    assert.doesNotMatch(homepage.match(/const homepageStructuredData[\s\S]*?export default/)?.[0] ?? "", new RegExp(asset));
+    assert.doesNotMatch(homepage.match(/export const metadata[\s\S]*?const homepageStructuredData/)?.[0] ?? "", new RegExp(asset));
+    assert.match(nextConfig, new RegExp(asset.replaceAll(".", "\\.")));
+  }
+  assert.match(nextConfig, /X-Robots-Tag/);
+  assert.match(nextConfig, /noindex, noimageindex/);
+});
+
+test("public product images link to product detail routes and retain image SEO", () => {
+  const card = readFileSync("components/product/product-card.tsx", "utf8");
+  const compare = readFileSync("components/compare/compare-page-client.tsx", "utf8");
+  const productPage = readFileSync("app/products/[slug]/page.tsx", "utf8");
+  const sitemap = readFileSync("app/sitemap.ts", "utf8");
+  assert.match(card, /href=\{product\.productHref\}[\s\S]*alt=\{product\.imageAlt\}/);
+  assert.match(compare, /href=\{`\/products\/\$\{product\.slug\}`\}[\s\S]*alt=\{product\.name\}/);
+  assert.match(productPage, /"@type": "Product"[\s\S]*image: product\.images/);
+  assert.match(sitemap, /products\.map[\s\S]*images: \[new URL\(product\.imageUrl/);
+});

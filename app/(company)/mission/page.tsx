@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CompanyCta } from "@/components/company/company-cta";
 import { CompanyHero } from "@/components/company/company-hero";
-import { absoluteUrl } from "@/lib/seo/site";
+import { absoluteUrl, siteSocialImagePath } from "@/lib/seo/site";
 
 const description = "Read the HypeBuzz mission, vision, operating principles, and responsible goals for building clearer product comparisons and smarter shopping tools.";
 
@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   title: "Mission & Vision",
   description,
   alternates: { canonical: absoluteUrl("/mission") },
-  openGraph: { type: "website", title: "Mission & Vision | HypeBuzz", description, url: absoluteUrl("/mission"), siteName: "HypeBuzz" },
-  twitter: { card: "summary_large_image", title: "Mission & Vision | HypeBuzz", description },
+  openGraph: { type: "website", title: "Mission & Vision | HypeBuzz", description, url: absoluteUrl("/mission"), siteName: "HypeBuzz", images: [{ url: absoluteUrl(siteSocialImagePath), alt: "HypeBuzz mission and vision" }] },
+  twitter: { card: "summary_large_image", title: "Mission & Vision | HypeBuzz", description, images: [absoluteUrl(siteSocialImagePath)] },
 };
 
 const principles = [

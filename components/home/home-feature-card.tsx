@@ -13,7 +13,10 @@ const featureImages: Record<HomeFeatureIcon, { src: string }> = {
   "trending-down": { src: "/home/price-drop.png" },
   search: { src: "/home/trending-products.png" },
 };
-function FeatureIcon({ icon }: { icon: HomeFeatureIcon }) { const image = featureImages[icon]; return <Image alt="" className="h-full w-full object-cover" height={80} src={image.src} width={80}/>; }
+function FeatureIcon({ icon }: { icon: HomeFeatureIcon }) {
+  const image = featureImages[icon];
+  return <Image alt="" aria-hidden="true" className="h-full w-full object-cover" decoding="async" fetchPriority="low" height={80} loading="lazy" role="presentation" src={image.src} width={80}/>;
+}
 function ArrowIcon() { return <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"/></svg>; }
 
 export function HomeFeatureCard({ title, description, actionLabel, href, icon, accent }: Props) {

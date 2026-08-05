@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { CompanyCta } from "@/components/company/company-cta";
 import { CompanyHero } from "@/components/company/company-hero";
-import { absoluteUrl } from "@/lib/seo/site";
+import { absoluteUrl, siteSocialImagePath } from "@/lib/seo/site";
 
 const description = "Contact HypeBuzz for platform support, product-information questions, merchant participation, affiliate enquiries, and business opportunities.";
 
 export const metadata: Metadata = {
-  title: "Contact HypeBuzz",
+  title: { absolute: "Contact HypeBuzz" },
   description,
   alternates: { canonical: absoluteUrl("/contact") },
-  openGraph: { type: "website", title: "Contact HypeBuzz", description, url: absoluteUrl("/contact"), siteName: "HypeBuzz" },
-  twitter: { card: "summary_large_image", title: "Contact HypeBuzz", description },
+  openGraph: { type: "website", title: "Contact HypeBuzz", description, url: absoluteUrl("/contact"), siteName: "HypeBuzz", images: [{ url: absoluteUrl(siteSocialImagePath), alt: "Contact HypeBuzz" }] },
+  twitter: { card: "summary_large_image", title: "Contact HypeBuzz", description, images: [absoluteUrl(siteSocialImagePath)] },
 };
 
 const socialLinks = [

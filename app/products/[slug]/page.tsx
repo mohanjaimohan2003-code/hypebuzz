@@ -24,7 +24,10 @@ function money(value: number, currency: string) {
 
 function absoluteImageUrl(imageUrl: string | null) {
   if (!imageUrl) return null;
-  try { return new URL(imageUrl, absoluteUrl("/")).toString(); } catch { return null; }
+  try {
+    const parsed = new URL(imageUrl, absoluteUrl("/"));
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed.toString() : null;
+  } catch { return null; }
 }
 
 export async function generateMetadata({ params }: PageProps<"/products/[slug]">): Promise<Metadata> {

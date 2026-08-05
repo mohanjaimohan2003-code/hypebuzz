@@ -3,15 +3,15 @@ import { Footer } from "@/components/layout/footer";
 import { HomepageHeader } from "@/components/layout/homepage-header";
 import { ProductCard } from "@/components/product/product-card";
 import { getTrendingProducts } from "@/lib/data/homepage";
-import { absoluteUrl } from "@/lib/seo/site";
+import { absoluteUrl, siteSocialImagePath } from "@/lib/seo/site";
 
 const canonical = absoluteUrl("/trending");
 export const metadata: Metadata = {
-  title: "Trending Products | HypeBuzz",
+  title: "Trending Products",
   description: "Explore products currently trending on HypeBuzz.",
   alternates: { canonical },
-  openGraph: { type: "website", title: "Trending Products | HypeBuzz", description: "Explore products currently trending on HypeBuzz.", url: canonical, siteName: "HypeBuzz" },
-  twitter: { card: "summary_large_image", title: "Trending Products | HypeBuzz", description: "Explore products currently trending on HypeBuzz." },
+  openGraph: { type: "website", title: "Trending Products | HypeBuzz", description: "Explore products currently trending on HypeBuzz.", url: canonical, siteName: "HypeBuzz", images: [{ url: absoluteUrl(siteSocialImagePath), alt: "Trending products on HypeBuzz" }] },
+  twitter: { card: "summary_large_image", title: "Trending Products | HypeBuzz", description: "Explore products currently trending on HypeBuzz.", images: [absoluteUrl(siteSocialImagePath)] },
 };
 
 export default async function TrendingPage() {

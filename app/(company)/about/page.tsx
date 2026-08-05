@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
 import { CompanyCta } from "@/components/company/company-cta";
 import { CompanyHero } from "@/components/company/company-hero";
-import { absoluteUrl } from "@/lib/seo/site";
+import { absoluteUrl, siteSocialImagePath } from "@/lib/seo/site";
 
 const description = "Learn why HypeBuzz was created and how transparent product comparisons, responsible recommendations, and clear offer information support better shopping decisions.";
 
 export const metadata: Metadata = {
-  title: "About HypeBuzz",
+  title: { absolute: "About HypeBuzz" },
   description,
   alternates: { canonical: absoluteUrl("/about") },
-  openGraph: { type: "website", title: "About HypeBuzz", description, url: absoluteUrl("/about"), siteName: "HypeBuzz" },
-  twitter: { card: "summary_large_image", title: "About HypeBuzz", description },
+  openGraph: { type: "website", title: "About HypeBuzz", description, url: absoluteUrl("/about"), siteName: "HypeBuzz", images: [{ url: absoluteUrl(siteSocialImagePath), alt: "About HypeBuzz" }] },
+  twitter: { card: "summary_large_image", title: "About HypeBuzz", description, images: [absoluteUrl(siteSocialImagePath)] },
 };
 
 const values = [
