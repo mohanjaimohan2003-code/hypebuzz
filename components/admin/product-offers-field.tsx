@@ -30,6 +30,7 @@ function emptyOffer(): ProductOfferValue {
 
 export type ProductOffersFieldHandle = {
   applyImport: (offer: NonNullable<ProductImportApplication["offer"]>) => void;
+  applyImports: (offers: NonNullable<ProductImportApplication["offers"]>) => void;
 };
 
 export const ProductOffersField = forwardRef<ProductOffersFieldHandle, { initialOffers: ProductOfferValue[]; merchants: AdminMerchantOption[]; disabled: boolean; error?: string; fieldErrors?: ProductFieldErrors }>(function ProductOffersField({ initialOffers, merchants, disabled, error, fieldErrors = {} }, ref) {
@@ -45,6 +46,7 @@ export const ProductOffersField = forwardRef<ProductOffersFieldHandle, { initial
       return current.length ? [patched, ...current.slice(1)] : [patched];
       });
     },
+    applyImports(importedOffers) { setOffers(importedOffers.map((offer)=>({...emptyOffer(),...offer}))); },
   }), []);
 
   return (

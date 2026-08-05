@@ -34,21 +34,14 @@ export function prepareProductImport(
   }
   const hasOfferField = [product.merchant, product.affiliateUrl, product.currentPrice, product.originalPrice,
     product.currency, product.stockStatus, product.activeOffer, product.offerLabel].some((value) => value !== undefined);
-  if (hasOfferField) {
-    application.offer = {};
-    if (product.merchant !== undefined) {
-      const match = matchImportReference(product.merchant, references.merchants, "Merchant");
-      application.offer.merchantId = match.id ?? "";
-      warnings.push(...match.warnings);
-    }
-    if (product.affiliateUrl !== undefined) application.offer.affiliateUrl = product.affiliateUrl;
-    if (product.currentPrice !== undefined) application.offer.currentPrice = product.currentPrice;
-    if (product.originalPrice !== undefined) application.offer.originalPrice = product.originalPrice;
-    if (product.currency !== undefined) application.offer.currency = product.currency;
-    if (product.stockStatus !== undefined) application.offer.stockStatus = product.stockStatus;
-    if (product.activeOffer !== undefined) application.offer.isActive = product.activeOffer;
-    if (product.offerLabel !== undefined) application.offer.offerTitle = product.offerLabel;
-  }
+  const normalizedOffers=product.offers??(hasOfferField?[{merchant:product.merchant,affiliateUrl:product.affiliateUrl,currentPrice:product.currentPrice,originalPrice:product.originalPrice,currency:product.currency,stockStatus:product.stockStatus,activeOffer:product.activeOffer,offerLabel:product.offerLabel}]:[]);
+  application.offers=normalizedOffers.map((offer,index)=>{
+    const applied:NonNullable<ProductImportApplication["offer"]>={};
+    if(offer.merchant!==undefined){const match=matchImportReference(offer.merchant,references.merchants,"Merchant");applied.merchantId=match.id??"";warnings.push(...match.warnings);if(!match.id)warnings.push({field:`offers.${index}.merchant`,message:`Merchant '${offer.merchant}' was not found. Add the merchant in Admin → Merchants before importing this offer.`});}
+    if(offer.affiliateUrl!==undefined)applied.affiliateUrl=offer.affiliateUrl;if(offer.currentPrice!==undefined)applied.currentPrice=offer.currentPrice;if(offer.originalPrice!==undefined)applied.originalPrice=offer.originalPrice;if(offer.currency!==undefined)applied.currency=offer.currency;if(offer.stockStatus!==undefined)applied.stockStatus=offer.stockStatus;if(offer.activeOffer!==undefined)applied.isActive=offer.activeOffer;if(offer.offerLabel!==undefined)applied.offerTitle=offer.offerLabel;if(offer.couponCode!==undefined)applied.couponCode=offer.couponCode;if(offer.shippingNote!==undefined)applied.shippingNote=offer.shippingNote;if(offer.lastCheckedAt!==undefined)applied.lastCheckedAt=offer.lastCheckedAt;return applied;
+  });
+  if(application.offers.length===1)application.offer=application.offers[0];
+  if(!application.offers.length)delete application.offers;
   for (const field of ["searchTags", "pros", "considerations", "faq"] as const) {
     if (product[field] !== undefined) warnings.push({ field, message: `${field} was validated but the current Add Product form/database write path does not support this field, so it was not applied.` });
   }

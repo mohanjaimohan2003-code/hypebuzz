@@ -262,15 +262,16 @@ async function smartProductMatch(supabase: ProductSupabaseClient, values: Produc
   const [candidateResult, brandResult, merchantResult] = await Promise.all([
     query.returns<SmartMatchRow[]>(),
     values.brandId ? supabase.from("brands").select("name").eq("id",values.brandId).maybeSingle<{name:string}>() : Promise.resolve({data:null,error:null}),
-    values.offers[0]?.merchantId ? supabase.from("merchants").select("name").eq("id",values.offers[0].merchantId).maybeSingle<{name:string}>() : Promise.resolve({data:null,error:null}),
+    values.offers.length ? supabase.from("merchants").select("id,name").in("id",values.offers.map((offer)=>offer.merchantId)).returns<Array<{id:string;name:string}>>() : Promise.resolve({data:[] as Array<{id:string;name:string}>,error:null}),
   ]);
-  if (candidateResult.error) return { match:null, merchantName:merchantResult.data?.name??null, error:candidateResult.error };
+  if (candidateResult.error) return { match:null, merchantNames:new Map<string,string>(), error:candidateResult.error };
   const candidates:MatchCandidate[]=(candidateResult.data??[]).map((row)=>({id:row.id,name:row.name,slug:row.slug,imageUrl:row.primary_image_url,brand:row.brand?.name,categoryId:row.category_id,categoryName:row.category?.name,specifications:row.specifications && typeof row.specifications==="object" && !Array.isArray(row.specifications) ? row.specifications as Record<string,unknown>:{},merchantIds:row.product_offers.map((offer)=>offer.merchant_id)}));
-  return { match:findBestProductMatch({name:values.name,brand:brandResult.data?.name??importedBrandName,categoryId:values.categoryId,specifications:values.specifications},candidates), merchantName:merchantResult.data?.name??null, error:null };
+  return { match:findBestProductMatch({name:values.name,brand:brandResult.data?.name??importedBrandName,categoryId:values.categoryId,specifications:values.specifications},candidates), merchantNames:new Map((merchantResult.data??[]).map((merchant)=>[merchant.id,merchant.name])), error:null };
 }
 
-function matchState(match: NonNullable<Awaited<ReturnType<typeof smartProductMatch>>["match"]>, merchantId:string|undefined, merchantName:string|null, needsUpdateConfirmation=false):ProductActionState {
-  return {status:"error",message:needsUpdateConfirmation?`${merchantName??"This merchant"} offer already exists. Update the existing offer?`:"Possible existing product found.",fieldErrors:{},match:{id:match.product.id,name:match.product.name,slug:match.product.slug,imageUrl:match.product.imageUrl??null,brand:match.product.brand??null,category:match.product.categoryName??null,confidence:match.confidence,reasons:match.reasons,merchantName,merchantExists:Boolean(merchantId&&match.product.merchantIds?.includes(merchantId)),needsUpdateConfirmation}};
+function matchState(match: NonNullable<Awaited<ReturnType<typeof smartProductMatch>>["match"]>, values:ProductFormValues, merchantNames:Map<string,string>, needsUpdateConfirmation=false):ProductActionState {
+  const plans=values.offers.map((offer)=>({merchant:merchantNames.get(offer.merchantId)??"Unknown merchant",existing:Boolean(match.product.merchantIds?.includes(offer.merchantId))}));const first=plans[0];
+  return {status:"error",message:needsUpdateConfirmation?"One or more merchant offers already exist. Update them?":"Possible existing product found.",fieldErrors:{},match:{id:match.product.id,name:match.product.name,slug:match.product.slug,imageUrl:match.product.imageUrl??null,brand:match.product.brand??null,category:match.product.categoryName??null,confidence:match.confidence,reasons:match.reasons,merchantName:first?.merchant??null,merchantExists:first?.existing??false,needsUpdateConfirmation,offerPlans:plans}};
 }
 
 async function attachOffersToMaster(supabase:ProductSupabaseClient, productId:string, values:ProductFormValues, updateExisting:boolean) {
@@ -280,7 +281,7 @@ async function attachOffersToMaster(supabase:ProductSupabaseClient, productId:st
   const existingIds=new Set((existing.data??[]).map((offer)=>offer.merchant_id));
   if(existingIds.size&&!updateExisting)return {error:null,duplicate:true};
   const rows=values.offers.map((offer)=>({product_id:productId,merchant_id:offer.merchantId,affiliate_url:offer.affiliateUrl,current_price:offer.currentPrice!,original_price:offer.originalPrice,currency:offer.currency,availability:offer.stockStatus,coupon_note:offer.couponCode||null,shipping_note:offer.shippingNote||null,offer_title:offer.offerTitle||null,is_active:offer.isActive,last_checked_at:offer.lastCheckedAt?new Date(offer.lastCheckedAt).toISOString():new Date().toISOString()}));
-  const result=updateExisting?await supabase.from("product_offers").upsert(rows,{onConflict:"product_id,merchant_id"}):await supabase.from("product_offers").insert(rows);
+  const result=await supabase.rpc("upsert_master_product_offers",{p_product_id:productId,p_offers:rows as unknown as Json});
   return {error:result.error,duplicate:false};
 }
 
@@ -480,10 +481,10 @@ export async function createProduct(
     if(attach||update){
       const attached=await attachOffersToMaster(supabase,expectedId,validation.data,update);
       if(attached.error)return databaseError(attached.error,"attach merchant offer to master product");
-      if(attached.duplicate)return matchState(smart.match,validation.data.offers[0]?.merchantId,smart.merchantName,true);
+      if(attached.duplicate)return matchState(smart.match,validation.data,smart.merchantNames,true);
       revalidateProductRoutes(); redirect(`/admin/products/${expectedId}/edit?notice=offer-attached`);
     }
-    if(!createAnyway)return matchState(smart.match,validation.data.offers[0]?.merchantId,smart.merchantName);
+    if(!createAnyway)return matchState(smart.match,validation.data,smart.merchantNames);
   }
 
   const slugResolution = await resolveCreateSlug(supabase, validation.data.slug, validation.data.name);

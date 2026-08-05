@@ -1,4 +1,6 @@
-import type { ImportWarning, NormalizedImportedProduct } from "./types";
+import type { ImportWarning, NormalizedImportedOffer, NormalizedImportedProduct } from "./types";
+
+export const MAX_JSON_IMPORT_OFFERS = 5;
 
 const aliases = {
   productName: ["productName", "name", "title", "product_name"],
@@ -9,7 +11,7 @@ const aliases = {
   affiliateUrl: ["affiliateUrl", "affiliate_link", "productUrl"],
   featuredProduct: ["featuredProduct", "isFeatured"],
   trendingProduct: ["trendingProduct", "isTrending"],
-  stockStatus: ["stockStatus", "stock"],
+  stockStatus: ["stockStatus", "stock", "availability"],
 } as const;
 
 type RawRecord = Record<string, unknown>;
@@ -81,6 +83,23 @@ function stockStatus(value: unknown, warnings: ImportWarning[]) {
   };
   const result = mapping[normalized];
   if (!result) warnings.push({ field: "stockStatus", message: `Stock Status '${value}' is not supported.` });
+  return result;
+}
+
+export function normalizeImportedOffer(record:RawRecord,index:number,warnings:ImportWarning[]):NormalizedImportedOffer {
+  const prefix=`Offer ${index+1}`;const result:NormalizedImportedOffer={};
+  const merchant=stringValue(direct(record,"merchant"),`${prefix} merchant`,warnings);if(merchant)result.merchant=merchant;
+  const currentRaw=aliased(record,"currentPrice"),originalRaw=aliased(record,"originalPrice");const current=normalizePrice(currentRaw),original=normalizePrice(originalRaw);
+  if(currentRaw!==undefined&&(!current||current<=0))warnings.push({field:`offers.${index}.currentPrice`,message:`${merchant??prefix} current price must be greater than 0.`});else if(current!==undefined)result.currentPrice=current;
+  if(originalRaw!==undefined&&original===undefined)warnings.push({field:`offers.${index}.originalPrice`,message:`${merchant??prefix} original price is invalid.`});else if(original!==undefined)result.originalPrice=original;
+  const urlRaw=aliased(record,"affiliateUrl");const url=stringValue(urlRaw,`${prefix} affiliate URL`,warnings);if(url){try{const parsed=new URL(url);if(!["http:","https:"].includes(parsed.protocol)||url.length>2048)throw new Error();result.affiliateUrl=url;}catch{warnings.push({field:`offers.${index}.affiliateUrl`,message:`${merchant??prefix} affiliate URL is invalid.`});}}else if(urlRaw!==undefined)warnings.push({field:`offers.${index}.affiliateUrl`,message:`${merchant??prefix} affiliate URL is required before saving this offer.`});
+  const currency=stringValue(direct(record,"currency"),`${prefix} currency`,warnings)?.toUpperCase();if(currency&&/^[A-Z]{3}$/.test(currency))result.currency=currency;else if(currency)warnings.push({field:`offers.${index}.currency`,message:`${merchant??prefix} currency must be a three-letter code.`});
+  const availability=stockStatus(aliased(record,"stockStatus"),warnings);if(availability)result.stockStatus=availability;
+  const active=normalizeBoolean(direct(record,"activeOffer")??direct(record,"isActive"));if(active!==undefined)result.activeOffer=active;
+  const label=stringValue(direct(record,"offerLabel")??direct(record,"offerTitle")??direct(record,"merchantProductTitle"),`${prefix} offer label`,warnings);if(label)result.offerLabel=label;
+  const coupon=stringValue(direct(record,"couponCode")??direct(record,"coupon"),`${prefix} coupon`,warnings);if(coupon)result.couponCode=coupon;
+  const shipping=stringValue(direct(record,"shippingNote")??direct(record,"shippingInformation"),`${prefix} shipping note`,warnings);if(shipping)result.shippingNote=shipping;
+  const checked=stringValue(direct(record,"lastCheckedAt"),`${prefix} last checked`,warnings);if(checked&&!Number.isNaN(Date.parse(checked)))result.lastCheckedAt=new Date(checked).toISOString().slice(0,16);
   return result;
 }
 
@@ -156,6 +175,8 @@ export function normalizeImportedProduct(record: RawRecord) {
     ...(normalizedSlug ? { slug: normalizedSlug } : {}),
     status,
   };
+  const offersRaw=direct(record,"offers");
+  if(Array.isArray(offersRaw)) result.offers=offersRaw.filter((offer):offer is RawRecord=>Boolean(offer)&&typeof offer==="object"&&!Array.isArray(offer)).map((offer,index)=>normalizeImportedOffer(offer,index,warnings));
   const stringFields = ["brand", "category", "subcategory", "seoTitle", "seoDescription", "merchant", "offerLabel"] as const;
   for (const field of stringFields) {
     const value = stringValue(direct(record, field), field, warnings);

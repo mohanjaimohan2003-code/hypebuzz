@@ -288,6 +288,7 @@ export type Database = {
       replace_product_images: { Args: { p_product_id: string; p_images: Json }; Returns: undefined };
       create_product_with_images_and_offers: { Args: { p_product: Json; p_images: Json; p_offers: Json }; Returns: string };
       save_product_workflow: { Args: { p_product_id: string | null; p_product: Json; p_images: Json; p_offers: Json }; Returns: string };
+      upsert_master_product_offers: { Args: { p_product_id: string; p_offers: Json }; Returns: Json };
       replace_product_offers: { Args: { p_product_id: string; p_offers: Json }; Returns: undefined };
       permanently_delete_archived_product: { Args: { p_product_id: string }; Returns: string };
       get_product_review_summary: { Args: { p_product_id: string }; Returns: Array<{ total_reviews: number; average_rating: number | null; five_star: number; four_star: number; three_star: number; two_star: number; one_star: number }> };

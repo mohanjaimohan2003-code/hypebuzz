@@ -9,26 +9,65 @@ import type { ImportReference, ProductImportApplication, ProductImportPreview } 
 type Props = { categories: ImportReference[]; brands: ImportReference[]; merchants: ImportReference[]; onApply: (application: ProductImportApplication) => void };
 const buttonClass = "min-h-11 rounded-[10px] border px-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2";
 
+function money(value: number | undefined, currency = "INR") {
+  if (value === undefined) return "Not supplied";
+  try { return new Intl.NumberFormat("en-IN", { style: "currency", currency, maximumFractionDigits: 2 }).format(value); }
+  catch { return `${currency} ${value}`; }
+}
+
 export function ProductJsonImporter({ categories, brands, merchants, onApply }: Props) {
-  const [json, setJson] = useState(""); const [error, setError] = useState("");
-  const [preview, setPreview] = useState<ProductImportPreview | null>(null); const [success, setSuccess] = useState("");
+  const [json, setJson] = useState("");
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState<ProductImportPreview | null>(null);
+  const [success, setSuccess] = useState("");
   const [summary, setSummary] = useState<string[]>([]);
 
   function resetMessages() { setError(""); setPreview(null); setSuccess(""); setSummary([]); }
-  function validateImport() { setSuccess(""); const parsed=parseProductImportJson(json); if(!parsed.success){setError(parsed.error);setPreview(null);return;} setError("");setPreview(prepareProductImport(parsed,{categories,brands,merchants})); }
-  function apply(){if(!preview)return;const application={...preview.application};const messages=["Product information imported",...(preview.categoryMessage?[preview.categoryMessage]:[])];if(application.brandName&&!application.brandId)messages.push(`${application.brandName} will be created when this product is saved.`);else if(application.brandId&&application.brandName)messages.push(`Brand '${application.brandName}' was selected.`);onApply(application);setSummary(messages);setSuccess("Product data imported successfully. Review all fields, upload images and approve before publishing.");setPreview(null);}
-  function confirmSuggestion(){if(!preview?.categorySuggestion)return;const suggestion=preview.categorySuggestion;setPreview({...preview,application:{...preview.application,categoryId:suggestion.id},categoryMessage:`Category '${preview.product.category}' was mapped to '${suggestion.name}' after confirmation.`,categorySuggestion:undefined});}
+  function validateImport() {
+    setSuccess("");
+    const parsed = parseProductImportJson(json);
+    if (!parsed.success) { setError(parsed.error); setPreview(null); return; }
+    setError("");
+    setPreview(prepareProductImport(parsed, { categories, brands, merchants }));
+  }
+  function apply() {
+    if (!preview) return;
+    const application = { ...preview.application };
+    const messages = ["Product information imported", ...(preview.categoryMessage ? [preview.categoryMessage] : [])];
+    if (application.brandName && !application.brandId) messages.push(`${application.brandName} will be created when this product is saved.`);
+    else if (application.brandId && application.brandName) messages.push(`Brand '${application.brandName}' was selected.`);
+    if (application.offers?.length) messages.push(`${application.offers.length} merchant offer${application.offers.length === 1 ? "" : "s"} imported.`);
+    onApply(application);
+    setSummary(messages);
+    setSuccess("Product data imported successfully. Review all fields, complete missing affiliate URLs, upload images and approve before publishing.");
+    setPreview(null);
+  }
+  function confirmSuggestion() {
+    if (!preview?.categorySuggestion) return;
+    const suggestion = preview.categorySuggestion;
+    setPreview({ ...preview, application: { ...preview.application, categoryId: suggestion.id }, categoryMessage: `Category '${preview.product.category}' was mapped to '${suggestion.name}' after confirmation.`, categorySuggestion: undefined });
+  }
 
   return <details className="group rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] shadow-[0_1px_2px_rgba(17,24,39,0.04)]">
     <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 sm:px-6"><span><span className="block text-lg font-bold text-[#111827]">AI Product Import</span><span className="mt-1 block text-sm font-normal leading-6 text-[#4B5563]">Paste structured product JSON to automatically fill the product form. Review all details and upload images before publishing.</span></span><span aria-hidden="true" className="shrink-0 text-xl text-[#1D4ED8] group-open:rotate-180">⌄</span></summary>
-    <div className="border-t border-[#BFDBFE] p-5 sm:p-6"><label className="text-sm font-semibold text-[#111827]" htmlFor="product-import-json">Product JSON</label><textarea aria-describedby="product-import-limit" className="mt-2 min-h-56 w-full rounded-[10px] border border-[#93C5FD] bg-white p-4 font-mono text-xs leading-6 text-[#111827] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]" id="product-import-json" maxLength={102400} onChange={(event)=>{setJson(event.target.value);resetMessages();}} placeholder={'{\n  "productName": "Example product"\n}'} spellCheck={false} value={json}/><p className="mt-2 text-xs text-[#4B5563]" id="product-import-limit">JSON only. Maximum 100 KB. Import never saves automatically.</p>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button className={`${buttonClass} border-[#93C5FD] bg-white text-[#1D4ED8]`} onClick={()=>{setJson(JSON.stringify(productImportExample,null,2));resetMessages();}} type="button">Load Example</button><button className={`${buttonClass} border-[#2563EB] bg-[#2563EB] text-white disabled:border-[#93C5FD] disabled:bg-[#93C5FD]`} disabled={!json.trim()} onClick={validateImport} type="button">Auto Fill Product</button><button className={`${buttonClass} border-[#D1D5DB] bg-white text-[#374151]`} onClick={()=>{setJson("");resetMessages();}} type="button">Clear Import</button></div>
-      {error?<div className="mt-4 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-sm font-medium text-[#991B1B]" role="alert">{error}</div>:null}{success?<div aria-live="polite" className="mt-4 rounded-[10px] border border-[#86EFAC] bg-[#F0FDF4] p-4 text-sm font-medium text-[#166534]" role="status">{success}</div>:null}
-      {preview?<section aria-labelledby="product-import-preview-title" className="mt-5 rounded-xl border border-[#93C5FD] bg-white p-4 sm:p-5"><h3 className="font-bold text-[#111827]" id="product-import-preview-title">Import preview</h3><dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3"><div><dt className="text-[#6B7280]">Product name</dt><dd className="font-semibold">{preview.product.productName??"Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Brand</dt><dd className="font-semibold">{preview.product.brand??"Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Category</dt><dd className="font-semibold">{preview.product.category??"Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Merchant</dt><dd className="font-semibold">{preview.product.merchant??"Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Current / original price</dt><dd className="font-semibold">{preview.product.currentPrice??"—"} / {preview.product.originalPrice??"—"}</dd></div><div><dt className="text-[#6B7280]">Status</dt><dd className="font-semibold capitalize">{preview.product.status}</dd></div></dl>
-        <p className="mt-4 text-sm text-[#374151]">{preview.importedFields.length} normalized fields are ready. Nothing has been saved.</p>{preview.warnings.length?<div className="mt-4 rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] p-4"><p className="text-sm font-bold text-[#92400E]">Review the import notes below.</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#78350F]">{preview.warnings.map((warning,index)=><li key={`${warning.field}-${index}`}>{warning.message}</li>)}</ul></div>:<p className="mt-4 text-sm font-medium text-[#166534]">JSON validation passed with no warnings.</p>}
-        {preview.categorySuggestion?<div className="mt-4 rounded-[10px] border border-[#93C5FD] bg-[#EFF6FF] p-4 text-sm"><p>Closest existing category: <strong>{preview.categorySuggestion.name}</strong>. Confirm before applying it.</p><button className={`${buttonClass} mt-3 border-[#2563EB] bg-white text-[#1D4ED8]`} onClick={confirmSuggestion} type="button">Use {preview.categorySuggestion.name}</button></div>:null}
-        {preview.application.brandName&&!preview.application.brandId?<p className="mt-4 text-sm font-semibold text-[#92400E]">{preview.application.brandName} will be created when this product is saved.</p>:null}
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:flex sm:justify-end"><button className={`${buttonClass} border-[#D1D5DB] bg-white text-[#374151]`} onClick={()=>setPreview(null)} type="button">Cancel</button><button className={`${buttonClass} border-[#2563EB] bg-[#2563EB] text-white disabled:bg-[#93C5FD]`} onClick={apply} type="button">Apply to Form</button></div></section>:null}
-      {success?<div className="mt-5 w-full rounded-xl border border-[#D1D5DB] bg-white p-4"><h3 className="font-bold">Import checklist</h3><ul className="mt-3 space-y-2 text-sm">{summary.map((item)=><li key={item}>✓ {item}</li>)}<li>○ Upload product images</li><li>○ Review category, brand and merchant</li><li>○ Verify price and affiliate link</li><li>○ Save as draft or publish</li></ul></div>:null}
-    </div></details>;
+    <div className="border-t border-[#BFDBFE] p-5 sm:p-6">
+      <label className="text-sm font-semibold text-[#111827]" htmlFor="product-import-json">Product JSON</label>
+      <textarea aria-describedby="product-import-limit" className="mt-2 min-h-56 w-full rounded-[10px] border border-[#93C5FD] bg-white p-4 font-mono text-xs leading-6 text-[#111827] outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]" id="product-import-json" maxLength={102400} onChange={(event) => { setJson(event.target.value); resetMessages(); }} placeholder={'{\n  "product": { "productName": "Example product" },\n  "offers": []\n}'} spellCheck={false} value={json}/>
+      <p className="mt-2 text-xs text-[#4B5563]" id="product-import-limit">JSON only. Maximum 100 KB. Import never saves automatically.</p>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap"><button className={`${buttonClass} border-[#93C5FD] bg-white text-[#1D4ED8]`} onClick={() => { setJson(JSON.stringify(productImportExample, null, 2)); resetMessages(); }} type="button">Load Example</button><button className={`${buttonClass} border-[#2563EB] bg-[#2563EB] text-white disabled:border-[#93C5FD] disabled:bg-[#93C5FD]`} disabled={!json.trim()} onClick={validateImport} type="button">Auto Fill Product</button><button className={`${buttonClass} border-[#D1D5DB] bg-white text-[#374151]`} onClick={() => { setJson(""); resetMessages(); }} type="button">Clear Import</button></div>
+      {error ? <div className="mt-4 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-sm font-medium text-[#991B1B]" role="alert">{error}</div> : null}
+      {success ? <div aria-live="polite" className="mt-4 rounded-[10px] border border-[#86EFAC] bg-[#F0FDF4] p-4 text-sm font-medium text-[#166534]" role="status">{success}</div> : null}
+      {preview ? <section aria-labelledby="product-import-preview-title" className="mt-5 rounded-xl border border-[#93C5FD] bg-white p-4 sm:p-5">
+        <h3 className="font-bold text-[#111827]" id="product-import-preview-title">Import preview</h3>
+        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4"><div><dt className="text-[#6B7280]">Product name</dt><dd className="font-semibold">{preview.product.productName ?? "Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Brand</dt><dd className="font-semibold">{preview.product.brand ?? "Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Category</dt><dd className="font-semibold">{preview.product.category ?? "Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Status</dt><dd className="font-semibold capitalize">{preview.product.status}</dd></div></dl>
+        {preview.product.offers?.length ? <div className="mt-5"><h4 className="text-sm font-bold uppercase tracking-wide text-[#374151]">Merchant offers — {preview.product.offers.length}</h4><div className="mt-3 grid gap-3 sm:grid-cols-2">{preview.product.offers.map((offer, index) => { const resolved = Boolean(preview.application.offers?.[index]?.merchantId); return <article className="rounded-[10px] border border-[#E5E7EB] p-3" key={`${offer.merchant ?? "offer"}-${index}`}><div className="flex items-center justify-between gap-3"><h5 className="font-bold text-[#111827]">{offer.merchant ?? `Offer ${index + 1}`}</h5><span className={`text-xs font-bold ${resolved ? "text-[#166534]" : "text-[#B45309]"}`}>{resolved ? "Merchant found" : "Needs review"}</span></div><dl className="mt-2 grid grid-cols-2 gap-2 text-sm"><div><dt className="text-[#6B7280]">Current</dt><dd className="font-semibold">{money(offer.currentPrice, offer.currency)}</dd></div><div><dt className="text-[#6B7280]">Original</dt><dd className="font-semibold">{money(offer.originalPrice, offer.currency)}</dd></div><div><dt className="text-[#6B7280]">Availability</dt><dd className="font-semibold capitalize">{offer.stockStatus?.replaceAll("_", " ") ?? "Not supplied"}</dd></div><div><dt className="text-[#6B7280]">Affiliate URL</dt><dd className={`font-semibold ${offer.affiliateUrl ? "text-[#166534]" : "text-[#B91C1C]"}`}>{offer.affiliateUrl ? "Ready" : "Required before save"}</dd></div></dl></article>; })}</div><p className="mt-3 text-sm font-semibold text-[#374151]">{preview.product.offers.length} merchant offers detected.</p></div> : null}
+        <p className="mt-4 text-sm text-[#374151]">{preview.importedFields.length} normalized fields are ready. Nothing has been saved.</p>
+        {preview.warnings.length ? <div className="mt-4 rounded-[10px] border border-[#FDE68A] bg-[#FFFBEB] p-4"><p className="text-sm font-bold text-[#92400E]">Review the import notes below.</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#78350F]">{preview.warnings.map((warning, index) => <li key={`${warning.field}-${index}`}>{warning.message}</li>)}</ul></div> : <p className="mt-4 text-sm font-medium text-[#166534]">JSON validation passed with no warnings.</p>}
+        {preview.categorySuggestion ? <div className="mt-4 rounded-[10px] border border-[#93C5FD] bg-[#EFF6FF] p-4 text-sm"><p>Closest existing category: <strong>{preview.categorySuggestion.name}</strong>. Confirm before applying it.</p><button className={`${buttonClass} mt-3 border-[#2563EB] bg-white text-[#1D4ED8]`} onClick={confirmSuggestion} type="button">Use {preview.categorySuggestion.name}</button></div> : null}
+        {preview.application.brandName && !preview.application.brandId ? <p className="mt-4 text-sm font-semibold text-[#92400E]">{preview.application.brandName} will be created when this product is saved.</p> : null}
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:flex sm:justify-end"><button className={`${buttonClass} border-[#D1D5DB] bg-white text-[#374151]`} onClick={() => setPreview(null)} type="button">Cancel</button><button className={`${buttonClass} border-[#2563EB] bg-[#2563EB] text-white`} onClick={apply} type="button">Apply to Form</button></div>
+      </section> : null}
+      {success ? <div className="mt-5 w-full rounded-xl border border-[#D1D5DB] bg-white p-4"><h3 className="font-bold">Import checklist</h3><ul className="mt-3 space-y-2 text-sm">{summary.map((item) => <li key={item}>✓ {item}</li>)}<li>○ Upload product images</li><li>○ Review category, brand and merchants</li><li>○ Complete and verify affiliate links</li><li>○ Save as draft or publish</li></ul></div> : null}
+    </div>
+  </details>;
 }

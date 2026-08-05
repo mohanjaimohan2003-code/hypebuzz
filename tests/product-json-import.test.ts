@@ -12,9 +12,22 @@ import { importedBrandProductionError } from "../lib/admin/product-import/brand-
 import { assessAdminIdentity } from "../lib/auth/admin-identity";
 
 const references = {
-  categories: [{ id: "category-1", name: "Sports Shoes", slug: "sports-shoes", isActive: true }],
-  brands: [{ id: "brand-1", name: "ASIAN", slug: "asian", isActive: true }],
-  merchants: [{ id: "merchant-1", name: "Amazon", slug: "amazon", isActive: true }],
+  categories: [{ id: "category-1", name: "Sports Shoes", slug: "sports-shoes", isActive: true }, { id: "fashion", name: "Fashion", slug: "fashion", isActive: true }],
+  brands: [{ id: "brand-1", name: "ASIAN", slug: "asian", isActive: true }, { id: "uvsmart", name: "UVSMART", slug: "uvsmart", isActive: true }],
+  merchants: [{ id: "merchant-1", name: "Amazon", slug: "amazon", isActive: true }, { id: "merchant-2", name: "Flipkart", slug: "flipkart", isActive: true }],
+};
+
+const uvsmartPayload = {
+  product: {
+    productName: "UVSMART Matt Sunscreen Gel 50g", slug: "uvsmart-matt-sunscreen-gel-50g", brand: "UVSMART", category: "Fashion", subcategory: "Sunscreen",
+    shortDescription: "UVSMART Matt Sunscreen Gel is a 50g broad-spectrum sunscreen for daily skin protection.", longDescription: "UVSMART Matt Sunscreen Gel is a 50g sunscreen designed for everyday sun protection.",
+    highlights: ["50g sunscreen gel", "Matte finish", "Broad-spectrum sunscreen"], specifications: { Brand: "UVSMART", "Product Type": "Sunscreen Gel", "Net Quantity": "50 g" },
+    featuredProduct: false, trendingProduct: true, seoTitle: "UVSMART Matt Sunscreen Gel 50g", seoDescription: "Compare UVSMART Matt Sunscreen Gel 50g offers from Amazon and Flipkart.", status: "draft",
+  },
+  offers: [
+    { merchant: "Flipkart", merchantProductTitle: "UVSMART Sunscreen", currentPrice: 683, originalPrice: 945, currency: "INR", discountPercent: 28, availability: "in_stock", affiliateUrl: "", productUrl: "", coupon: "10% off core coupon shown", shippingInformation: "Delivery information shown", offerTitle: "Lowest Price since Launch", seller: "NAVYAMEDICO" },
+    { merchant: "Amazon", merchantProductTitle: "Mankind UVSmart Matt Sunscreen", currentPrice: 878, originalPrice: 945, currency: "INR", discountPercent: 7, availability: "in_stock", affiliateUrl: "", productUrl: "", coupon: "Up to ₹100 cashback", shippingInformation: "Prime delivery benefits shown", offerTitle: "", seller: "Not Available" },
+  ],
 };
 
 function parse(value: unknown) {
@@ -29,14 +42,79 @@ test("valid complete JSON normalizes and prepares matching form fields", () => {
   assert.equal(preview.application.productName, productImportExample.productName);
   assert.equal(preview.application.categoryId, "category-1");
   assert.equal(preview.application.brandId, "brand-1");
-  assert.equal(preview.application.offer?.merchantId, "merchant-1");
-  assert.equal(preview.application.offer?.affiliateUrl, productImportExample.affiliateUrl);
-  assert.equal(preview.application.offer?.currentPrice, productImportExample.currentPrice);
-  assert.equal(preview.application.offer?.originalPrice, productImportExample.originalPrice);
+  assert.equal(preview.application.offers?.length, 2);
+  assert.equal(preview.application.offer, undefined);
+  assert.equal(preview.application.offers?.[0].affiliateUrl, productImportExample.offers[0].affiliateUrl);
+  assert.equal(preview.application.offers?.[0].currentPrice, productImportExample.offers[0].currentPrice);
   assert.equal(preview.application.status, productImportExample.status);
   assert.equal(preview.application.subcategory, productImportExample.subcategory ?? productImportExample.category);
   assert.equal(preview.product.highlights?.length, 4);
   assert.equal(Object.keys(preview.product.specifications ?? {}).length, 6);
+});
+
+test("legacy single-offer JSON remains backward compatible", () => {
+  const preview = prepareProductImport(parse({ merchant: "Amazon", affiliateUrl: "https://amazon.in/item", currentPrice: 999 }), references);
+  assert.equal(preview.application.offers?.length, 1);
+  assert.equal(preview.application.offer?.merchantId, "merchant-1");
+  assert.equal(preview.application.offer?.currentPrice, 999);
+});
+
+test("nested UVSMART master product and two offers normalize into one form application", () => {
+  const parsed = parse(uvsmartPayload);
+  assert.equal(parsed.product.productName, "UVSMART Matt Sunscreen Gel 50g");
+  assert.equal(parsed.product.brand, "UVSMART");
+  assert.equal(parsed.product.category, "Fashion");
+  assert.equal(parsed.product.offers?.length, 2);
+  assert.deepEqual(parsed.product.offers?.map((offer) => offer.merchant), ["Flipkart", "Amazon"]);
+  assert.deepEqual(parsed.product.offers?.map((offer) => offer.currentPrice), [683, 878]);
+  assert.deepEqual(parsed.product.offers?.map((offer) => offer.originalPrice), [945, 945]);
+  assert.deepEqual(parsed.product.offers?.map((offer) => offer.stockStatus), ["in_stock", "in_stock"]);
+  assert.equal(parsed.product.offers?.[0].shippingNote, "Delivery information shown");
+  assert.equal(parsed.product.offers?.[0].couponCode, "10% off core coupon shown");
+  assert.ok(parsed.warnings.filter((warning) => warning.message.includes("affiliate URL is required before saving")).length === 2);
+
+  const preview = prepareProductImport(parsed, references);
+  assert.equal(preview.application.productName, "UVSMART Matt Sunscreen Gel 50g");
+  assert.equal(preview.application.brandId, "uvsmart");
+  assert.equal(preview.application.categoryId, "fashion");
+  assert.equal(preview.application.offers?.length, 2);
+  assert.deepEqual(preview.application.offers?.map((offer) => offer.merchantId), ["merchant-2", "merchant-1"]);
+  assert.deepEqual(preview.application.offers?.map((offer) => offer.currentPrice), [683, 878]);
+  assert.deepEqual(preview.application.offers?.map((offer) => offer.affiliateUrl), [undefined, undefined]);
+});
+
+test("malformed nested product objects fail instead of reporting an empty successful import", () => {
+  assert.deepEqual(parseProductImportJson(JSON.stringify({ product: "invalid", offers: [{ merchant: "Amazon" }] })), { success: false, error: "Product must be an object containing the master product fields." });
+  assert.deepEqual(parseProductImportJson(JSON.stringify({ product: {} })), { success: false, error: "No supported product or offer fields were found in this JSON." });
+});
+
+test("one through five explicit offers are accepted and keep independent prices", () => {
+  for (let count = 1; count <= 5; count += 1) {
+    const merchants = Array.from({ length: count }, (_, index) => ({ id: `m-${index}`, name: `Merchant ${index}`, slug: `merchant-${index}`, isActive: true }));
+    const offers = merchants.map((merchant, index) => ({ merchant: merchant.name, affiliateUrl: `https://example.com/${index}`, currentPrice: 100 + index }));
+    const preview = prepareProductImport(parse({ productName: "Multi offer", offers }), { ...references, merchants });
+    assert.equal(preview.application.offers?.length, count);
+    assert.deepEqual(preview.application.offers?.map((offer) => offer.currentPrice), offers.map((offer) => offer.currentPrice));
+  }
+});
+
+test("more than five offers and duplicate merchants are rejected clearly", () => {
+  const six = parseProductImportJson(JSON.stringify({ offers: Array.from({ length: 6 }, (_, index) => ({ merchant: `Merchant ${index}` })) }));
+  assert.deepEqual(six, { success: false, error: "Maximum 5 merchant offers are currently supported in one product import." });
+  const duplicate = parseProductImportJson(JSON.stringify({ offers: [{ merchant: "Amazon" }, { merchant: " amazon  " }] }));
+  assert.equal(duplicate.success, false);
+  if (!duplicate.success) assert.match(duplicate.error, /appears more than once/);
+});
+
+test("an unknown merchant and an invalid later offer URL remain visible as import warnings", () => {
+  const preview = prepareProductImport(parse({ offers: [
+    { merchant: "Amazon", affiliateUrl: "https://amazon.in/good", currentPrice: 100 },
+    { merchant: "Unknown Shop", affiliateUrl: "javascript:bad", currentPrice: 90 },
+  ] }), references);
+  assert.equal(preview.application.offers?.[1].merchantId, "");
+  assert.equal(preview.application.offers?.[1].affiliateUrl, undefined);
+  assert.ok(preview.warnings.some((warning) => warning.message.includes("Unknown Shop")));
+  assert.ok(preview.warnings.some((warning) => warning.message.includes("affiliate URL")));
 });
 
 test("valid partial JSON leaves absent values out of the application", () => {

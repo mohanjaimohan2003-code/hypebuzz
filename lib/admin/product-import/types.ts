@@ -3,6 +3,25 @@ import type { OfferStockStatus } from "@/lib/validation/offer";
 export type ImportWarning = { field: string; message: string };
 
 export type ImportedFaq = { question: string; answer: string };
+export type NormalizedImportedOffer = {
+  merchant?: string;
+  affiliateUrl?: string;
+  currentPrice?: number;
+  originalPrice?: number;
+  currency?: string;
+  stockStatus?: OfferStockStatus;
+  activeOffer?: boolean;
+  offerLabel?: string;
+  couponCode?: string;
+  shippingNote?: string;
+  lastCheckedAt?: string;
+};
+
+export type AppliedImportedOffer = Omit<NormalizedImportedOffer, "merchant" | "activeOffer" | "offerLabel"> & {
+  merchantId?: string;
+  isActive?: boolean;
+  offerTitle?: string;
+};
 
 export type NormalizedImportedProduct = {
   productName?: string;
@@ -32,6 +51,7 @@ export type NormalizedImportedProduct = {
   pros?: string[];
   considerations?: string[];
   faq?: ImportedFaq[];
+  offers?: NormalizedImportedOffer[];
 };
 
 export type ProductImportParseResult =
@@ -61,16 +81,8 @@ export type ProductImportApplication = {
   status: "draft" | "published";
   featuredProduct?: boolean;
   trendingProduct?: boolean;
-  offer?: {
-    merchantId?: string;
-    affiliateUrl?: string;
-    currentPrice?: number;
-    originalPrice?: number;
-    currency?: string;
-    stockStatus?: OfferStockStatus;
-    isActive?: boolean;
-    offerTitle?: string;
-  };
+  offer?: AppliedImportedOffer;
+  offers?: AppliedImportedOffer[];
 };
 
 export type ProductImportPreview = {

@@ -63,7 +63,7 @@ export type ProductActionState = {
   validationErrors?: Array<{ field: ProductField; message: string }>;
   validationMode?: "draft" | "publish";
   existingProductId?: string;
-  match?: { id: string; name: string; slug: string; imageUrl: string | null; brand: string | null; category: string | null; confidence: number; reasons: string[]; merchantName: string | null; merchantExists: boolean; needsUpdateConfirmation: boolean };
+  match?: { id: string; name: string; slug: string; imageUrl: string | null; brand: string | null; category: string | null; confidence: number; reasons: string[]; merchantName: string | null; merchantExists: boolean; needsUpdateConfirmation: boolean; offerPlans:Array<{merchant:string;existing:boolean}> };
 };
 
 export const initialProductActionState: ProductActionState = {
@@ -170,6 +170,7 @@ export function validateProductForm(formData: FormData):
   }
 
   const usedMerchants = new Set<string>();
+  if(offers.length>5)fieldErrors.offerList="Maximum 5 merchant offers are currently supported in one product import.";
   for (const [index, offer] of offers.entries()) {
     const label = `Offer ${index + 1}`;
     if (!offer || !isOfferUuid(offer.id) || !isOfferUuid(offer.merchantId)) { fieldErrors.merchantId = `${label}: select a valid merchant.`; fieldErrors.offerList = fieldErrors.merchantId; break; }
