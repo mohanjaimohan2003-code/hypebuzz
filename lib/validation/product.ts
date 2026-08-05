@@ -63,6 +63,7 @@ export type ProductActionState = {
   validationErrors?: Array<{ field: ProductField; message: string }>;
   validationMode?: "draft" | "publish";
   existingProductId?: string;
+  match?: { id: string; name: string; slug: string; imageUrl: string | null; brand: string | null; category: string | null; confidence: number; reasons: string[]; merchantName: string | null; merchantExists: boolean; needsUpdateConfirmation: boolean };
 };
 
 export const initialProductActionState: ProductActionState = {

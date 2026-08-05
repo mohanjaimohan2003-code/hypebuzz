@@ -93,7 +93,7 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
     ?? Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
   const uniqueValidationErrors = validationErrors.filter(([field, reason], index, all) => all.findIndex(([, candidate]) => candidate === reason) === index && Boolean(field));
   const showValidationBanner = Boolean(state.validationMode && uniqueValidationErrors.length > 0);
-  const showGeneralError = state.status === "error" && !state.validationMode;
+  const showGeneralError = state.status === "error" && !state.validationMode && !state.match;
 
   useEffect(() => {
     const currentErrors = Object.entries(state.fieldErrors) as Array<[ProductField, string]>;
@@ -145,6 +145,18 @@ export function ProductForm({ mode, categories, brands, merchants, product }: Pr
           This product is archived. Saving it as Draft or Published will reactivate it.
         </div>
       ) : null}
+
+      {state.match ? <section aria-labelledby="product-match-title" className="overflow-hidden rounded-2xl border border-[#C4B5FD] bg-white shadow-[0_12px_30px_rgba(76,29,149,0.10)]">
+        <div className="border-b border-[#DDD6FE] bg-[#F5F3FF] px-5 py-4 sm:px-6"><p className="text-xs font-bold uppercase tracking-wider text-[#6D28D9]">Smart product matching</p><h2 className="mt-1 text-xl font-bold text-[#111827]" id="product-match-title">Possible Existing Product Found</h2></div>
+        <div className="grid gap-5 p-5 sm:grid-cols-[6rem_1fr] sm:p-6">
+          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-xl border border-[#E5E7EB] bg-[#F8FAFC]">{state.match.imageUrl ? <>{/* eslint-disable-next-line @next/next/no-img-element */}<img alt={state.match.name} className="h-full w-full object-contain p-2" src={state.match.imageUrl}/></> : <span className="text-xs text-[#6B7280]">No image</span>}</div>
+          <div className="min-w-0"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-bold text-[#111827]">{state.match.name}</h3><p className="mt-1 text-sm text-[#6B7280]">{state.match.brand??"No brand"} · {state.match.category??"Uncategorised"}</p></div><span className={`rounded-full px-3 py-1 text-sm font-bold ${state.match.confidence>=95?"bg-[#DCFCE7] text-[#166534]":"bg-[#FEF3C7] text-[#92400E]"}`}>{state.match.confidence}% confidence</span></div>
+            {state.match.reasons.length?<p className="mt-3 text-sm text-[#4B5563]">Matched on: {state.match.reasons.join(", ")}.</p>:null}
+            {state.match.merchantName?<p className={`mt-3 rounded-lg px-3 py-2 text-sm font-semibold ${state.match.merchantExists?"bg-[#FFF7ED] text-[#9A3412]":"bg-[#EFF6FF] text-[#1D4ED8]"}`}>{state.match.merchantExists?`${state.match.merchantName} offer already exists.`:`${state.match.merchantName} can be attached as a new offer.`}</p>:null}
+            <div className="mt-5 flex flex-wrap gap-3">{state.match.needsUpdateConfirmation?<button className="min-h-11 rounded-[10px] bg-[#EA580C] px-5 text-sm font-bold text-white" name="matchDecision" type="submit" value={`update:${state.match.id}`}>Yes, update offer</button>:<button className="min-h-11 rounded-[10px] bg-[#2563EB] px-5 text-sm font-bold text-white" name="matchDecision" type="submit" value={`attach:${state.match.id}`}>Attach Offer</button>}<Link className="inline-flex min-h-11 items-center rounded-[10px] border border-[#D1D5DB] px-5 text-sm font-semibold" href={`/admin/products/${state.match.id}/edit`}>View Product</Link>{state.match.needsUpdateConfirmation?<button className="min-h-11 rounded-[10px] border border-[#D1D5DB] px-5 text-sm font-semibold" type="button">No</button>:<button className="min-h-11 rounded-[10px] border border-[#FCA5A5] px-5 text-sm font-semibold text-[#B91C1C]" name="matchDecision" type="submit" value={`create:${state.match.id}`}>Create New Product Anyway</button>}</div>
+          </div>
+        </div>
+      </section>:null}
 
       {showValidationBanner || showGeneralError ? (
         <div aria-live="polite" className="rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#991B1B]" role="alert">

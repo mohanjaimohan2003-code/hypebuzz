@@ -7,6 +7,7 @@ import type { Json, ProductImage, ProductStatus } from "@/lib/types/database";
 import { publicationErrorMessages } from "@/lib/offers/publication-contract";
 import { createBrandSlug } from "@/lib/validation/brand";
 import { matchingProductForCreate, nextAvailableProductSlug } from "@/lib/products/slug-conflict";
+import { findBestProductMatch, normalizeMatchText, type MatchCandidate } from "@/lib/products/smart-matching";
 import {
   isUuid,
   validateProductForm,
@@ -250,6 +251,39 @@ function duplicateProductState(product: ExistingProductSlug): ProductActionState
   };
 }
 
+type SmartMatchRow = { id:string; name:string; slug:string; primary_image_url:string|null; category_id:string|null; brand_id:string|null; specifications:Json; brand:{name:string}|null; category:{name:string}|null; product_offers:Array<{merchant_id:string}> };
+
+async function smartProductMatch(supabase: ProductSupabaseClient, values: ProductFormValues, importedBrandName="") {
+  const significant = normalizeMatchText(values.name).split(" ").filter((token) => token.length >= 3).sort((a,b)=>b.length-a.length)[0] ?? "";
+  let query = supabase.from("products").select("id, name, slug, primary_image_url, category_id, brand_id, specifications, brand:brands(name), category:categories(name), product_offers(merchant_id)").neq("status", "archived").limit(50);
+  if (values.brandId) query = query.eq("brand_id", values.brandId);
+  else if (values.categoryId) query = query.eq("category_id", values.categoryId);
+  if (significant && !values.brandId && !values.categoryId) query = query.ilike("name", `%${significant.replace(/[\\%_]/g,"\\$&")}%`);
+  const [candidateResult, brandResult, merchantResult] = await Promise.all([
+    query.returns<SmartMatchRow[]>(),
+    values.brandId ? supabase.from("brands").select("name").eq("id",values.brandId).maybeSingle<{name:string}>() : Promise.resolve({data:null,error:null}),
+    values.offers[0]?.merchantId ? supabase.from("merchants").select("name").eq("id",values.offers[0].merchantId).maybeSingle<{name:string}>() : Promise.resolve({data:null,error:null}),
+  ]);
+  if (candidateResult.error) return { match:null, merchantName:merchantResult.data?.name??null, error:candidateResult.error };
+  const candidates:MatchCandidate[]=(candidateResult.data??[]).map((row)=>({id:row.id,name:row.name,slug:row.slug,imageUrl:row.primary_image_url,brand:row.brand?.name,categoryId:row.category_id,categoryName:row.category?.name,specifications:row.specifications && typeof row.specifications==="object" && !Array.isArray(row.specifications) ? row.specifications as Record<string,unknown>:{},merchantIds:row.product_offers.map((offer)=>offer.merchant_id)}));
+  return { match:findBestProductMatch({name:values.name,brand:brandResult.data?.name??importedBrandName,categoryId:values.categoryId,specifications:values.specifications},candidates), merchantName:merchantResult.data?.name??null, error:null };
+}
+
+function matchState(match: NonNullable<Awaited<ReturnType<typeof smartProductMatch>>["match"]>, merchantId:string|undefined, merchantName:string|null, needsUpdateConfirmation=false):ProductActionState {
+  return {status:"error",message:needsUpdateConfirmation?`${merchantName??"This merchant"} offer already exists. Update the existing offer?`:"Possible existing product found.",fieldErrors:{},match:{id:match.product.id,name:match.product.name,slug:match.product.slug,imageUrl:match.product.imageUrl??null,brand:match.product.brand??null,category:match.product.categoryName??null,confidence:match.confidence,reasons:match.reasons,merchantName,merchantExists:Boolean(merchantId&&match.product.merchantIds?.includes(merchantId)),needsUpdateConfirmation}};
+}
+
+async function attachOffersToMaster(supabase:ProductSupabaseClient, productId:string, values:ProductFormValues, updateExisting:boolean) {
+  const merchantIds=values.offers.map((offer)=>offer.merchantId);
+  const existing=await supabase.from("product_offers").select("merchant_id").eq("product_id",productId).in("merchant_id",merchantIds).returns<Array<{merchant_id:string}>>();
+  if(existing.error)return {error:existing.error,duplicate:false};
+  const existingIds=new Set((existing.data??[]).map((offer)=>offer.merchant_id));
+  if(existingIds.size&&!updateExisting)return {error:null,duplicate:true};
+  const rows=values.offers.map((offer)=>({product_id:productId,merchant_id:offer.merchantId,affiliate_url:offer.affiliateUrl,current_price:offer.currentPrice!,original_price:offer.originalPrice,currency:offer.currency,availability:offer.stockStatus,coupon_note:offer.couponCode||null,shipping_note:offer.shippingNote||null,offer_title:offer.offerTitle||null,is_active:offer.isActive,last_checked_at:offer.lastCheckedAt?new Date(offer.lastCheckedAt).toISOString():new Date().toISOString()}));
+  const result=updateExisting?await supabase.from("product_offers").upsert(rows,{onConflict:"product_id,merchant_id"}):await supabase.from("product_offers").insert(rows);
+  return {error:result.error,duplicate:false};
+}
+
 async function resolveCreateSlug(supabase: ProductSupabaseClient, requestedSlug: string, productName: string) {
   const exact = await findProductBySlug(supabase, requestedSlug);
   if (exact.error) return { slug: null, duplicate: null, error: exact.error };
@@ -415,6 +449,7 @@ export async function createProduct(
   if (!validation.success) return validation.state;
 
   const importedBrandName = String(formData.get("importedBrandName") ?? "").trim();
+  const matchDecision=String(formData.get("matchDecision")??"");
 
   const category = await categoryExists(supabase, validation.data.categoryId);
   if (category.error) return databaseError(category.error, "insert");
@@ -434,6 +469,22 @@ export async function createProduct(
   const brand = await validateBrandReference(supabase, validation.data.brandId);
   if (brand.error) return databaseError(brand.error, "insert");
   if (!brand.exists) return { status: "error", message: "The selected brand no longer exists.", fieldErrors: { brandId: "Choose an available brand." } };
+
+  const smart=await smartProductMatch(supabase,validation.data,importedBrandName);
+  if(smart.error)return databaseError(smart.error,"check for an existing master product");
+  if(smart.match&&smart.match.confidence>=80) {
+    const expectedId=smart.match.product.id;
+    const createAnyway=matchDecision===`create:${expectedId}`;
+    const attach=matchDecision===`attach:${expectedId}`;
+    const update=matchDecision===`update:${expectedId}`;
+    if(attach||update){
+      const attached=await attachOffersToMaster(supabase,expectedId,validation.data,update);
+      if(attached.error)return databaseError(attached.error,"attach merchant offer to master product");
+      if(attached.duplicate)return matchState(smart.match,validation.data.offers[0]?.merchantId,smart.merchantName,true);
+      revalidateProductRoutes(); redirect(`/admin/products/${expectedId}/edit?notice=offer-attached`);
+    }
+    if(!createAnyway)return matchState(smart.match,validation.data.offers[0]?.merchantId,smart.merchantName);
+  }
 
   const slugResolution = await resolveCreateSlug(supabase, validation.data.slug, validation.data.name);
   if (slugResolution.error) return databaseError(slugResolution.error, "check product slug availability");
