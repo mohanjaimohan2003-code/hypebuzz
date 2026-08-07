@@ -6,6 +6,41 @@ export const siteSocialImagePath = "/brand/hypebuzz-banner-v3.png";
 
 export const productionSiteOrigin = "https://hypebuzzshop.in";
 
+export const socialLinks = [
+  {
+    label: "YouTube",
+    accessibleName: "HypeBuzz on YouTube",
+    href: "https://www.youtube.com/@Hypebuzzshop",
+    icon: "youtube",
+    includeInOrganizationSameAs: true,
+  },
+  {
+    label: "WhatsApp",
+    accessibleName: "HypeBuzz WhatsApp Channel",
+    href: "https://whatsapp.com/channel/0029Vb93axxB4hdWUkpst90q",
+    icon: "whatsapp",
+    includeInOrganizationSameAs: false,
+  },
+  {
+    label: "Instagram",
+    accessibleName: "HypeBuzz on Instagram",
+    href: "https://www.instagram.com/hypebuzzofficial?igsh=amJnbmhuc2pnMWEy",
+    icon: "instagram",
+    includeInOrganizationSameAs: true,
+  },
+  {
+    label: "Facebook",
+    accessibleName: "HypeBuzz on Facebook",
+    href: "https://www.facebook.com/share/19EFpHhRvS/",
+    icon: "facebook",
+    includeInOrganizationSameAs: true,
+  },
+] as const;
+
+export const organizationSameAs = socialLinks
+  .filter((social) => social.includeInOrganizationSameAs)
+  .map((social) => social.href);
+
 export function getSiteUrl() {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   try {

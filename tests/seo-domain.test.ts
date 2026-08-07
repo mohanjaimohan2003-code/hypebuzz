@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { absoluteUrl, getSiteUrl, productionSiteOrigin, siteDescription, siteTitle } from "../lib/seo/site";
+import { absoluteUrl, getSiteUrl, organizationSameAs, productionSiteOrigin, siteDescription, siteTitle, socialLinks } from "../lib/seo/site";
 
 test("production SEO origin is fixed to the custom domain", () => {
   const previous = process.env.NEXT_PUBLIC_SITE_URL;
@@ -23,6 +23,32 @@ test("homepage metadata states the product-discovery and price-comparison positi
   assert.match(siteDescription, /trending products/i);
   assert.match(siteDescription, /compare prices/i);
   assert.match(siteDescription, /trusted merchants/i);
+});
+
+test("official social profiles are canonical across the footer and Organization schema", () => {
+  assert.deepEqual(
+    socialLinks.map(({ accessibleName, href }) => ({ accessibleName, href })),
+    [
+      { accessibleName: "HypeBuzz on YouTube", href: "https://www.youtube.com/@Hypebuzzshop" },
+      { accessibleName: "HypeBuzz WhatsApp Channel", href: "https://whatsapp.com/channel/0029Vb93axxB4hdWUkpst90q" },
+      { accessibleName: "HypeBuzz on Instagram", href: "https://www.instagram.com/hypebuzzofficial?igsh=amJnbmhuc2pnMWEy" },
+      { accessibleName: "HypeBuzz on Facebook", href: "https://www.facebook.com/share/19EFpHhRvS/" },
+    ],
+  );
+  assert.deepEqual(organizationSameAs, [
+    "https://www.youtube.com/@Hypebuzzshop",
+    "https://www.instagram.com/hypebuzzofficial?igsh=amJnbmhuc2pnMWEy",
+    "https://www.facebook.com/share/19EFpHhRvS/",
+  ]);
+
+  const footer = readFileSync("components/layout/footer.tsx", "utf8");
+  const homepage = readFileSync("app/page.tsx", "utf8");
+  assert.match(footer, /aria-label=\{social\.accessibleName\}/);
+  assert.match(footer, /target="_blank"/);
+  assert.match(footer, /rel="noopener noreferrer"/);
+  assert.match(footer, /focus-visible:ring-2/);
+  assert.doesNotMatch(footer, /linkedin|twitter|x\.com/i);
+  assert.match(homepage, /sameAs: organizationSameAs/);
 });
 
 test("priority public routes define self-canonicals and complete social metadata", () => {

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { socialLinks } from "@/lib/seo/site";
 
 const companyLinks = [
   { label: "About HypeBuzz", href: "/about" },
@@ -37,22 +38,15 @@ const legalLinks = [
   { label: "Trademark Notice", href: "/trademark-notice" },
 ] as const;
 
-const socialLinks = [
-  { label: "Instagram", href: "https://www.instagram.com/hypebuzz/", icon: "instagram" },
-  { label: "LinkedIn", href: "https://www.linkedin.com/company/hypebuzz/", icon: "linkedin" },
-  { label: "YouTube", href: "https://www.youtube.com/@hypebuzz", icon: "youtube" },
-  { label: "X", href: "https://x.com/hypebuzz", icon: "x" },
-  { label: "Facebook", href: "https://www.facebook.com/hypebuzz/", icon: "facebook" },
-] as const;
-
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#60A5FA] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050A14]";
 const linkClass = `inline-flex min-h-11 items-center rounded-md text-sm leading-5 text-slate-400 transition-colors duration-150 hover:text-[#60A5FA] motion-reduce:transition-none ${focusRing}`;
 
-function SocialIcon({ name }: { name: (typeof socialLinks)[number]["icon"] }) {
+type SocialIconName = (typeof socialLinks)[number]["icon"];
+
+function SocialIcon({ name }: { name: SocialIconName }) {
   if (name === "instagram") return <svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><rect height="16" rx="4" stroke="currentColor" strokeWidth="1.8" width="16" x="4" y="4"/><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.8"/><circle cx="17.4" cy="6.7" fill="currentColor" r="1"/></svg>;
-  if (name === "linkedin") return <svg aria-hidden="true" fill="currentColor" viewBox="0 0 24 24"><path d="M6.5 8.3A1.8 1.8 0 1 0 6.5 4.7a1.8 1.8 0 0 0 0 3.6ZM5 10h3v9H5v-9Zm5 0h2.9v1.2h.1c.4-.8 1.5-1.6 3.1-1.6 3.2 0 3.9 2.1 3.9 5V19h-3v-4c0-1 0-2.6-1.7-2.6s-2 1.2-2 2.5V19h-3v-9Z"/></svg>;
   if (name === "youtube") return <svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M20 8.1a2.5 2.5 0 0 0-1.8-1.8C16.7 5.9 12 5.9 12 5.9s-4.7 0-6.2.4A2.5 2.5 0 0 0 4 8.1a26 26 0 0 0-.4 3.9 26 26 0 0 0 .4 3.9 2.5 2.5 0 0 0 1.8 1.8c1.5.4 6.2.4 6.2.4s4.7 0 6.2-.4a2.5 2.5 0 0 0 1.8-1.8 26 26 0 0 0 .4-3.9 26 26 0 0 0-.4-3.9Z" stroke="currentColor" strokeWidth="1.8"/><path d="m10 9.5 5 2.5-5 2.5v-5Z" fill="currentColor"/></svg>;
-  if (name === "x") return <svg aria-hidden="true" fill="currentColor" viewBox="0 0 24 24"><path d="M5.4 4h4.1l3.3 4.5L16.7 4h1.9l-4.9 5.8L19.2 20h-4.1l-3.7-5.1L7.1 20H5.2l5.3-6.4L5.4 4Zm3.2 1.5H7.9l8.3 13h.7l-8.3-13Z"/></svg>;
+  if (name === "whatsapp") return <svg aria-hidden="true" fill="none" viewBox="0 0 24 24"><path d="M20 11.8a8 8 0 0 1-11.9 7L4 20l1.2-4A8 8 0 1 1 20 11.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/><path d="M9 7.7c.2-.4.4-.4.7-.4h.4c.2 0 .3.1.4.4l.7 1.7c.1.3.1.5-.1.7l-.6.7c-.2.2-.1.4 0 .6.5 1 1.3 1.8 2.3 2.3.2.1.4.2.6 0l.8-1c.2-.2.4-.2.7-.1l1.7.8c.3.1.4.3.4.5 0 .3-.1 1.3-.7 1.8-.5.5-1.3.8-2.1.6-1.1-.3-2.5-.8-4.2-2.3-1.4-1.3-2.4-2.9-2.7-4-.3-1 .1-1.8.5-2.3.4-.4.8-.5 1.2 0Z" fill="currentColor"/></svg>;
   return <svg aria-hidden="true" fill="currentColor" viewBox="0 0 24 24"><path d="M13.8 20v-7h2.4l.4-2.8h-2.8V8.4c0-.8.2-1.4 1.4-1.4h1.5V4.5c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.3-3.7 3.8v2.1H8.3V13h2.5v7h3Z"/></svg>;
 }
 
@@ -87,7 +81,7 @@ export function Footer() {
           <nav aria-label="HypeBuzz social media">
             <h2 className="text-xs font-bold uppercase tracking-[0.14em] text-slate-100">Social</h2>
             <ul className="mt-3 flex flex-wrap gap-2 lg:max-w-28">
-              {socialLinks.map((social) => <li key={social.label}><a aria-label={`${social.label} (opens in a new tab)`} className={`flex h-11 w-11 items-center justify-center rounded-[10px] border border-slate-700 bg-[#0B1220] text-slate-300 transition-colors duration-150 hover:border-[#3B82F6] hover:text-[#60A5FA] motion-reduce:transition-none ${focusRing}`} href={social.href} rel="noopener noreferrer" target="_blank"><span className="h-5 w-5"><SocialIcon name={social.icon} /></span></a></li>)}
+              {socialLinks.map((social) => <li key={social.label}><a aria-label={social.accessibleName} title={social.accessibleName} className={`flex h-11 w-11 items-center justify-center rounded-[10px] border border-slate-700 bg-[#0B1220] text-slate-300 transition-colors duration-150 hover:border-[#3B82F6] hover:text-[#60A5FA] motion-reduce:transition-none ${focusRing}`} href={social.href} rel="noopener noreferrer" target="_blank"><span className="h-5 w-5"><SocialIcon name={social.icon} /></span></a></li>)}
             </ul>
           </nav>
         </div>
