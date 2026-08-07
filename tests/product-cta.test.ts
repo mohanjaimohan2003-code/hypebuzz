@@ -45,22 +45,45 @@ test("store cards retain tracked Buy Now links and omit unavailable checked-date
   assert.match(html, /href="\/go\/11111111-1111-4111-8111-111111111111"/);
   assert.match(html, /Buy now at Amazon/);
   assert.match(html, /01cada77a0a7d326d85b7969fe26a728\.jpg/);
-  assert.match(html, /alt="Amazon logo"/);
+  assert.match(html, /alt=""/);
   assert.doesNotMatch(html, /Checked date unavailable|date unavailable/i);
 });
 
-test("uploaded Amazon JPEG is preserved and only resolved for Amazon", () => {
+test("bundled merchant logos resolve by normalized slug or name", () => {
   const logoPath = "public/merchants/01cada77a0a7d326d85b7969fe26a728.jpg";
   const logo = readFileSync(logoPath);
   assert.equal(createHash("sha256").update(logo).digest("hex"), "1be8de1fdce020eb4cdef475778512a783c70b08d517d21cf2268c5d00756732");
-  assert.equal(getBundledMerchantLogo({ slug: "amazon" }), `/${logoPath.replaceAll("\\", "/").replace("public/", "")}`);
-  assert.equal(getBundledMerchantLogo({ slug: "flipkart" }), null);
+  assert.equal(getBundledMerchantLogo({ name: "Amazon", slug: "amazon" }), `/${logoPath.replaceAll("\\", "/").replace("public/", "")}`);
+  assert.equal(getBundledMerchantLogo({ name: "Flipkart", slug: "FLIPKART" }), "/merchants/flipkart.jpeg");
+  assert.equal(getBundledMerchantLogo({ name: "Myntra", slug: "" }), "/merchants/myntra.webp");
+  assert.equal(getBundledMerchantLogo({ name: "HypeBuzz", slug: "hype-buzz" }), "/brand/hypebuzz-logo.png");
+  assert.equal(getBundledMerchantLogo({ name: "ShopABC", slug: "shopabc" }), null);
 });
 
-test("merchant logo falls back to a merchant initial without borrowing Amazon artwork", () => {
-  const html = renderToStaticMarkup(createElement(MerchantLogo, { merchant: { name: "Flipkart", slug: "flipkart", logoUrl: null } }));
-  assert.match(html, />F<\/span>/);
-  assert.doesNotMatch(html, /01cada77a0a7d326d85b7969fe26a728/);
+test("known merchants use their independent bundled logos and unknown merchants retain an initial", () => {
+  const merchants = [
+    { name: "Amazon", slug: "amazon", logoUrl: null },
+    { name: "Flipkart", slug: "flipkart", logoUrl: null },
+    { name: "Myntra", slug: "myntra", logoUrl: null },
+    { name: "HypeBuzz", slug: "hypebuzz", logoUrl: null },
+  ];
+  const html = merchants.map((merchant) => renderToStaticMarkup(createElement(MerchantLogo, { merchant }))).join("");
+  assert.match(html, /01cada77a0a7d326d85b7969fe26a728\.jpg/);
+  assert.match(html, /flipkart\.jpeg/);
+  assert.match(html, /myntra\.webp/);
+  assert.match(html, /hypebuzz-logo\.png/);
+  assert.doesNotMatch(html, />[AFMH]<\/span>/);
+
+  const unknown = renderToStaticMarkup(createElement(MerchantLogo, { merchant: { name: "ShopABC", slug: "shopabc", logoUrl: null } }));
+  assert.match(unknown, />S<\/span>/);
+});
+
+test("configured merchant logos take priority and retain graceful image-error fallback", () => {
+  const html = renderToStaticMarkup(createElement(MerchantLogo, { merchant: { name: "Flipkart", slug: "flipkart", logoUrl: "https://cdn.example/flipkart.svg" } }));
+  assert.match(html, /src="https:\/\/cdn\.example\/flipkart\.svg"/);
+  const source = readFileSync("components/product/merchant-logo.tsx", "utf8");
+  assert.match(source, /\[configuredLogo, bundledLogo\]/);
+  assert.match(source, /onError=/);
 });
 
 test("top summary uses tracked best-offer CTA, secondary compare, stores, and exact trust copy", () => {
