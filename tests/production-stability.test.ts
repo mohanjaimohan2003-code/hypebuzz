@@ -42,3 +42,16 @@ test("migration 030 separates public asset reads from admin authorization", () =
   assert.match(sql, /grant execute[\s\S]*to anon, authenticated/);
   assert.match(sql, /Public can read published knowledge hub items/);
 });
+
+test("homepage uses HypeBuzz Picks and the brand link replaces the standalone Home navigation item", () => {
+  const catalog = readFileSync("components/home/homepage-catalog.tsx", "utf8");
+  const categoryNavigation = readFileSync("components/layout/category-navigation.tsx", "utf8");
+  const navbar = readFileSync("components/layout/navbar.tsx", "utf8");
+  const homepageData = readFileSync("lib/data/homepage.ts", "utf8");
+
+  assert.match(catalog, /title="HypeBuzz Picks"/);
+  assert.match(catalog, /products=\{data\.featuredProducts\}/);
+  assert.doesNotMatch(categoryNavigation, />Home<|href="\/">Home/);
+  assert.match(navbar, /aria-label="HypeBuzz home"[\s\S]*?href="\/"/);
+  assert.match(homepageData, /\.eq\("is_featured", true\)/);
+});

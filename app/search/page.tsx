@@ -55,10 +55,10 @@ export default async function SearchPage({ searchParams }: PageProps<"/search">)
         <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
           <div className="mb-6"><h1 className="text-2xl font-bold tracking-tight text-[#111827] sm:text-3xl">{heading}</h1><p aria-live="polite" className="mt-2 text-sm text-[#6B7280]">{result.products.length} {result.products.length === 1 ? "product" : "products"} found</p></div>
           {result.hasError ? <div className="mb-6 rounded-[10px] border border-[#FCA5A5] bg-[#FEF2F2] px-4 py-3 text-sm text-[#991B1B]" role="alert">Some search data could not be loaded. Please try again.</div> : null}
-          <div className="flex flex-col items-end gap-6 lg:flex-row lg:items-start">
+          <div className="space-y-6">
             <SearchFilters filters={filters} categories={result.categories} brands={result.brands} merchants={result.merchants} />
-            <section aria-label="Product search results" className="min-w-0 flex-1">
-              {result.products.length ? <div className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{result.products.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <SearchEmptyState />}
+            <section aria-label="Product search results" className="min-w-0">
+              {result.products.length ? <div className="grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 xl:grid-cols-4">{result.products.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <SearchEmptyState />}
             </section>
           </div>
         </div>
