@@ -11,7 +11,7 @@ type ProductSocialSource = {
   images: Array<{ imageUrl: string }>;
 };
 
-const maxSocialDescriptionLength = 200;
+const maxSocialDescriptionLength = 180;
 
 function concise(value: string) {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -33,14 +33,14 @@ export function publicHttpsUrl(value: string | null | undefined) {
 
 export function productSocialDetails(product: ProductSocialSource) {
   const canonicalUrl = absoluteUrl(`/products/${product.slug}`);
-  const descriptionSource = product.seoDescription?.trim()
-    || product.shortDescription?.trim()
-    || product.description?.trim()
+  const descriptionSource = [product.seoDescription, product.shortDescription, product.description]
+    .map((value) => value?.replace(/\s+/g, " ").trim())
+    .find((value) => value && value.toLocaleLowerCase() !== product.name.trim().toLocaleLowerCase())
     || `View ${product.name} on HypeBuzz.`;
   const primaryImage = product.images[0]?.imageUrl ?? product.imageUrl;
 
   return {
-    title: product.seoTitle?.trim() || product.name,
+    title: product.name,
     description: concise(descriptionSource),
     imageUrl: publicHttpsUrl(primaryImage) ?? absoluteUrl(siteSocialImagePath),
     canonicalUrl,

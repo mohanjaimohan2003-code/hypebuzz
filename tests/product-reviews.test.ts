@@ -54,16 +54,33 @@ test("Verified Buyer badge renders only from the genuine database flag",()=>{
 });
 
 test("migration enforces approved-only public reads, hides user ids, and grants no public writes",()=>{
-  const sql=readFileSync("supabase/migrations/031_product_reviews.sql","utf8");
-  assert.match(sql,/Public can read approved product reviews[\s\S]*status='approved'/);
-  assert.match(sql,/grant select\(id, product_id, reviewer_name/);
-  assert.doesNotMatch(sql,/grant select\([^;]*user_id/);
-  assert.doesNotMatch(sql,/grant insert[\s\S]*to anon/);
-  assert.doesNotMatch(sql,/for (insert|update|delete) to anon/);
+  for (const migration of ["031_product_reviews.sql", "036_reconcile_product_reviews.sql"]) {
+    const sql=readFileSync(`supabase/migrations/${migration}`,"utf8");
+    assert.match(sql,/alter table public\.product_reviews enable row level security/);
+    assert.match(sql,/Public can read approved product reviews[\s\S]*status='approved'[\s\S]*p\.status='published'/);
+    assert.match(sql,/grant select\(id, product_id, reviewer_name/);
+    assert.doesNotMatch(sql,/grant select\([^;]*user_id/);
+    assert.doesNotMatch(sql,/grant insert[\s\S]*to anon/);
+    assert.doesNotMatch(sql,/for (insert|update|delete) to anon/);
+  }
+});
+
+test("review reconciliation migration matches the application query contract and is non-destructive",()=>{
+  const sql=readFileSync("supabase/migrations/036_reconcile_product_reviews.sql","utf8");
+  for (const column of ["product_id", "reviewer_name", "rating", "title", "review_text", "is_verified_buyer", "status", "helpful_count", "unhelpful_count", "created_at", "updated_at"]) {
+    assert.match(sql, new RegExp(`\\b${column}\\b`));
+  }
+  assert.match(sql,/create function public\.get_product_review_summary\(p_product_id uuid\)/);
+  assert.match(sql,/security invoker set search_path=''/);
+  assert.match(sql,/left join public\.product_reviews r on r\.product_id=p\.id and r\.status='approved'/);
+  assert.match(sql,/count\(r\.id\)/);
+  assert.match(sql,/avg\(r\.rating\)/);
+  assert.doesNotMatch(sql,/\b(drop table|truncate|delete from|drop schema)\b/i);
+  assert.doesNotMatch(sql,/create or replace function/i);
 });
 
 test("admin moderation verifies application authorization and active-admin RLS",()=>{
-  const action=readFileSync("app/admin/(protected)/reviews/actions.ts","utf8"); const sql=readFileSync("supabase/migrations/031_product_reviews.sql","utf8");
+  const action=readFileSync("app/admin/(protected)/reviews/actions.ts","utf8"); const sql=readFileSync("supabase/migrations/036_reconcile_product_reviews.sql","utf8");
   assert.match(action,/getAdminAccess/); assert.match(action,/\["approved", "rejected"\]/);
   assert.match(sql,/Active admins can moderate product reviews[\s\S]*auth\.uid\(\)[\s\S]*is_active/);
   assert.match(sql,/Active admins can delete product reviews/);

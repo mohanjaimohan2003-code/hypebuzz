@@ -4,6 +4,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { normalizeGalleryImages, ProductGallery, swipeTargetIndex } from "../components/product/product-gallery";
+import { ShareProductButton } from "../components/product/share-product-button";
 
 const images = [
   { id: "one", imageUrl: "/product-images/11111111-1111-4111-8111-111111111111", altText: "Front" },
@@ -32,6 +33,15 @@ test("multi-image gallery renders only dot controls without arrows or thumbnails
   assert.doesNotMatch(html, /Previous product image|Next product image|View Test product image/);
 });
 
+test("gallery renders one fixed action overlay outside slides and navigation", () => {
+  const action = createElement(ShareProductButton, { title: "Test product", text: "Description", url: "https://hypebuzzshop.in/products/test-product" });
+  const html = renderToStaticMarkup(createElement(ProductGallery, { action, imageUrl: null, images, productName: "Test product" }));
+  assert.equal(html.match(/aria-label="Share product"/g)?.length, 1);
+  assert.equal(html.match(/data-gallery-action/g)?.length, 1);
+  assert.match(html, /data-gallery-action[^>]*><div[^>]*><button/);
+  assert.doesNotMatch(html, /aria-label="View product image [^"]+"[^>]*>[\s\S]*aria-label="Share product"/);
+});
+
 test("swipe gestures navigate, wrap, and preserve vertical scrolling intent", () => {
   assert.equal(swipeTargetIndex({ x: 200, y: 100 }, { x: 120, y: 105 }, 0, 2), 1);
   assert.equal(swipeTargetIndex({ x: 120, y: 100 }, { x: 200, y: 105 }, 1, 2), 0);
@@ -51,4 +61,6 @@ test("gallery source implements reduced-motion autoplay, swipe, preloading, time
   assert.match(source, /new window\.Image\(\)/);
   assert.match(source, /window\.clearTimeout\(autoplayTimer\.current\)/);
   assert.match(source, /setFailedIds/);
+  assert.match(source, /action \? <div[^>]+data-gallery-action/);
+  assert.match(source, /event\.stopPropagation\(\)/);
 });

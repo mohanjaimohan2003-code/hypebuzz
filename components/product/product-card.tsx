@@ -1,6 +1,8 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import { absoluteUrl } from "@/lib/seo/site";
 import { CompareButton, WishlistButton } from "./product-card-actions";
+import { ShareProductButton } from "./share-product-button";
 
 export type ProductCardProduct = {
   id: string; name: string; brand: string; imageSrc: string; imageAlt: string;
@@ -23,7 +25,10 @@ export function ProductCard({ product }: { product: ProductCardProduct }) {
           )}
         </Link>
         {product.badge ? <span className="absolute left-3 top-3 rounded-md bg-[#1D4ED8] px-2 py-1 text-[11px] font-bold text-white">{product.badge}</span> : null}
-        <div className="absolute right-2 top-2 scale-90"><WishlistButton initiallyWishlisted={product.initiallyWishlisted} productName={product.name} /></div>
+        <div className="absolute right-2 top-2 flex origin-top-right scale-90 items-start gap-1.5">
+          <WishlistButton initiallyWishlisted={product.initiallyWishlisted} productName={product.name} />
+          <ShareProductButton ariaLabel={`Share ${product.name}`} title={product.name} url={absoluteUrl(product.productHref)} />
+        </div>
       </div>
       <div className="flex flex-1 flex-col border-t border-[#F1F5F9] p-3.5">
         <p className="text-xs font-medium text-[#6B7280]">{product.brand}</p>

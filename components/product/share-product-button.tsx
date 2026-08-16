@@ -1,15 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
+import type { MouseEvent } from "react";
+import { useEffect, useState } from "react";
 
 type ShareProductButtonProps = {
+  ariaLabel?: string;
   title: string;
-  text: string;
+  text?: string;
   url: string;
 };
 
-export function ShareProductButton({ title, text, url }: ShareProductButtonProps) {
+export function ShareProductButton({ ariaLabel = "Share product", title, text, url }: ShareProductButtonProps) {
   const [feedback, setFeedback] = useState("");
+
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(""), 2500);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
 
   async function copyLink() {
     try {
@@ -32,11 +41,13 @@ export function ShareProductButton({ title, text, url }: ShareProductButtonProps
     }
   }
 
-  async function shareProduct() {
+  async function shareProduct(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
     setFeedback("");
     if (navigator.share) {
       try {
-        await navigator.share({ title, text, url });
+        await navigator.share({ title, ...(text ? { text } : {}), url });
         return;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
@@ -46,18 +57,16 @@ export function ShareProductButton({ title, text, url }: ShareProductButtonProps
   }
 
   return (
-    <div className="mt-4 flex items-center gap-3">
+    <div className="flex flex-col items-end gap-1.5">
       <button
-        className="inline-flex min-h-10 items-center gap-2 rounded-[10px] border border-[#D1D5DB] bg-white px-4 text-sm font-semibold text-[#374151] transition-colors hover:border-[#2563EB] hover:bg-[#EFF6FF] hover:text-[#1D4ED8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none"
+        aria-label={ariaLabel}
+        className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#D1D5DB] bg-white/95 text-[#374151] shadow-sm backdrop-blur-sm transition-colors hover:border-[#2563EB] hover:bg-[#EFF6FF] hover:text-[#1D4ED8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none"
         onClick={shareProduct}
         type="button"
       >
-        <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-          <path d="M12 16V3m0 0L7 8m5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-        </svg>
-        Share product
+        <Image alt="" aria-hidden="true" className="h-[18px] w-[18px] object-contain" height={18} src="/icons/share.png" width={18} />
       </button>
-      <span aria-live="polite" className="text-sm font-medium text-[#166534]" role="status">{feedback}</span>
+      <span aria-live="polite" className={feedback ? "rounded-full bg-white/95 px-2.5 py-1 text-xs font-semibold text-[#166534] shadow-sm" : "sr-only"} role="status">{feedback}</span>
     </div>
   );
 }

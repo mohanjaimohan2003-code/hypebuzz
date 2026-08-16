@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- external catalog hosts remain administrator-configurable. */
 import Image from "next/image";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 const fallbackImage = "/products/aurora-headphones.svg";
@@ -48,7 +49,7 @@ function ProductImage({ src, alt, preload = false, onError }: { src: string; alt
   return <img alt={alt} className={classes} fetchPriority={preload ? "high" : undefined} onError={onError} src={src} />;
 }
 
-export function ProductGallery({ imageUrl, images, productName }: { imageUrl: string | null; images: GalleryImage[]; productName: string }) {
+export function ProductGallery({ action, imageUrl, images, productName }: { action?: ReactNode; imageUrl: string | null; images: GalleryImage[]; productName: string }) {
   const gallery = useMemo(() => normalizeGalleryImages(images, imageUrl, productName), [imageUrl, images, productName]);
   const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState(gallery[0].id);
@@ -154,6 +155,7 @@ export function ProductGallery({ imageUrl, images, productName }: { imageUrl: st
             <ProductImage alt={index === selectedIndex ? image.altText || productName : ""} onError={() => imageFailed(image)} preload={index === 0} src={image.imageUrl} />
           </div>
         ))}
+        {action ? <div className="absolute right-3 top-3 z-30 sm:right-4 sm:top-4" data-gallery-action onPointerDown={(event) => event.stopPropagation()} onPointerUp={(event) => event.stopPropagation()}>{action}</div> : null}
         {multiple ? <div aria-label="Choose product image" className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-white/90 px-3 py-2 shadow-sm backdrop-blur-sm" role="group">
           {visibleImages.map((image, index) => <button aria-label={`View product image ${index + 1}`} aria-pressed={index === selectedIndex} className={`h-2.5 rounded-full transition-all motion-reduce:transition-none ${index === selectedIndex ? "w-6 bg-[#2563EB]" : "w-2.5 bg-[#CBD5E1] hover:bg-[#94A3B8]"}`} key={image.id} onClick={() => select(index)} type="button" />)}
         </div> : null}

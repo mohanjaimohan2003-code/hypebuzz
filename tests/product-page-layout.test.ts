@@ -20,3 +20,10 @@ test("product gallery is compact and contains no visible arrows or thumbnails", 
   assert.match(source, /Choose product image/);
   assert.doesNotMatch(source, /Previous product image|Next product image|grid-cols-4/);
 });
+
+test("the single share control is overlaid on the gallery instead of the CTA area", () => {
+  const source = readFileSync("app/products/[slug]/page.tsx", "utf8");
+  assert.equal(source.match(/<ShareProductButton/g)?.length, 1);
+  assert.match(source, /<ProductGallery[\s\S]*action=\{<ShareProductButton/);
+  assert.ok(source.indexOf("<ShareProductButton") < source.indexOf("Compare all"));
+});

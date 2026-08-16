@@ -130,7 +130,12 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           </nav>
 
           <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(24rem,1.1fr)] lg:items-start">
-            <ProductGallery imageUrl={product.imageUrl} images={product.images} productName={product.name} />
+            <ProductGallery
+              action={<ShareProductButton text={social.description} title={product.name} url={social.canonicalUrl} />}
+              imageUrl={product.imageUrl}
+              images={product.images}
+              productName={product.name}
+            />
             <section aria-labelledby="product-title" className="min-w-0 lg:pt-1">
               <div className="flex flex-wrap gap-2 text-sm font-medium text-[#1D4ED8]">
                 {bestOffer?.discount ? <span className="rounded-full bg-[#DCFCE7] px-3 py-1 font-bold text-[#166534]">{bestOffer.discount}% off</span> : null}
@@ -148,7 +153,6 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               </dl>
               {product.offers.length ? <a className="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-[10px] border border-[#2563EB] bg-white px-6 font-semibold text-[#1D4ED8] transition-colors hover:bg-[#EFF6FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none" href="#compare-prices">Compare all {product.offers.length} {product.offers.length === 1 ? "offer" : "offers"}</a> : null}
               {bestOffer ? <><a className="mt-3 inline-flex min-h-14 w-full items-center justify-between gap-3 rounded-[10px] border border-[#EA580C] bg-[#F97316] px-4 font-bold text-[#111827] transition-colors hover:bg-[#FB923C] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 motion-reduce:transition-none sm:px-5" href={`/go/${bestOffer.id}`} rel="sponsored nofollow noopener noreferrer" target="_blank"><MerchantLogo merchant={bestOffer.merchant} variant="cta" /><span className="min-w-0 flex-1 text-center">Buy now on {bestOffer.merchant.name}</span><span aria-hidden="true" className="shrink-0">↗</span></a><div className="mt-3 space-y-1 text-sm"><p className="font-medium text-[#166534]"><span aria-hidden="true">✓</span> Latest listed price.</p><p className="text-[#6B7280]">Final price and availability are confirmed on the store.</p></div></> : null}
-              <ShareProductButton text={social.description} title={product.name} url={social.canonicalUrl} />
             </section>
           </div>
 
