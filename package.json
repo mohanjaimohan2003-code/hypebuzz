@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "npm run test:seo && npm run test:analytics && npm run test:matching && npm run test:publication && npm run test:product-import && npm run test:rich-products && npm run test:workflow && npm run test:production && npm run test:compare && npm run test:reviews && npm run test:product-cta && npm run test:gallery && npm run test:product-page && npm run test:currency-rates && npm run test:search-filters",
+    "test": "npm run test:seo && npm run test:analytics && npm run test:matching && npm run test:publication && npm run test:product-import && npm run test:rich-products && npm run test:workflow && npm run test:production && npm run test:compare && npm run test:reviews && npm run test:product-cta && npm run test:gallery && npm run test:product-page && npm run test:product-sharing && npm run test:currency-rates && npm run test:search-filters",
     "test:currency-rates": "tsx --test tests/currency-rates.test.ts",
     "test:search-filters": "tsx --test tests/search-filters-layout.test.ts",
     "test:analytics": "tsx --test tests/admin-analytics-date-range.test.ts",
@@ -23,7 +23,8 @@
     "test:reviews": "tsx --test tests/product-reviews.test.ts",
     "test:product-cta": "tsx --test tests/product-cta.test.ts",
     "test:gallery": "tsx --test tests/product-gallery.test.ts",
-    "test:product-page": "tsx --test tests/product-page-layout.test.ts tests/product-information-tabs.test.ts"
+    "test:product-page": "tsx --test tests/product-page-layout.test.ts tests/product-information-tabs.test.ts",
+    "test:product-sharing": "tsx --test tests/product-sharing.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
